@@ -87,8 +87,12 @@ class TriangleAttention(nn.Module):
         mha_inputs = {
             "q_x": x,
             "kv_x": x,
-            "biases": biases,
+            "tri_bias": biases[0],
+            "mask_bias": biases[1],
+            "mask": (x.new_ones(x.shape[:-1])),  # Asegurarse que se pase
         }
+
+        print 
 
         return chunk_layer(
             partial(
