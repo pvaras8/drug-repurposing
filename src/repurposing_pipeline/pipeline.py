@@ -64,10 +64,12 @@ def run_pipeline(
 
     for row in prepared_rows:
         molecule_id = row["molecule_id"]
-        smiles = row["canonical_smiles"]
+        input_smiles = row["smiles"]
+        canonical_smiles = row.get("canonical_smiles")
         base_result: dict[str, Any] = {
             "molecule_id": molecule_id,
-            "smiles": smiles,
+            "smiles": input_smiles,
+            "canonical_smiles": canonical_smiles,
             "ligand_prep_status": row.get("ligand_prep_status"),
             "ligand_prep_error": row.get("ligand_prep_error"),
             "docking_status": "pending_phase_2",
@@ -88,7 +90,7 @@ def run_pipeline(
             boltz_result = run_boltz_with_existing_wrapper(
                 repo_root=Path(__file__).resolve().parents[2],
                 molecule_id=molecule_id,
-                smiles=smiles,
+                smiles=input_smiles,
                 run_boltz=run_boltz,
                 logs_dir=run_paths.logs,
                 boltz_results_dir=run_paths.boltz_results,
