@@ -4,7 +4,6 @@ import csv
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import time
 import traceback
@@ -78,7 +77,17 @@ def main() -> None:
             with tmp_yaml.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(data, handle)
 
-            subprocess.run(["boltz", "predict", str(tmp_yaml)], check=True)
+            subprocess.run(
+                [
+                    "boltz",
+                    "predict",
+                    str(tmp_yaml),
+                    "--out_dir",
+                    str(results_dir.parent),
+                    "--override",
+                ],
+                check=True,
+            )
 
             for _ in range(20):
                 if json_path.exists():
@@ -109,13 +118,6 @@ def main() -> None:
         finally:
             with csv_path.open("a", newline="", encoding="utf-8") as handle:
                 csv.writer(handle).writerow(row)
-
-            shutil.rmtree(results_dir, ignore_errors=True)
-            if json_path.exists():
-                try:
-                    json_path.unlink()
-                except Exception:
-                    pass
 
     print("\\n[boltz.py] predictions finished")
     print("[boltz.py] CSV saved at:", csv_path.resolve())

@@ -37,6 +37,9 @@ def parse_boltz_metrics_from_csv(csv_path: Path, smiles: str) -> dict[str, Any]:
     for row in reversed(rows):
         if (row.get("SMILES") or "") != smiles:
             continue
+        row_error = (row.get("error") or "").strip()
+        if row_error:
+            raise ValueError(f"Boltz reported molecule error: {row_error}")
         return {
             "boltz_affinity_pred_value": _to_float(row.get("affinity_pred_value")),
             "boltz_affinity_probability_binary": _to_float(row.get("affinity_probability_binary")),

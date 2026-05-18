@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import subprocess
+import sys
 from typing import Any
 
 from repurposing_pipeline.parsers.boltz_parser import parse_boltz_metrics, parse_boltz_metrics_from_csv
@@ -45,19 +46,20 @@ def run_boltz_with_existing_wrapper(
         }
 
     output_csv_path = molecule_out_dir / "boltz_output.csv"
-    output_json_path = molecule_out_dir / "affinity.json"
+    output_results_dir = molecule_out_dir / "boltz_results_affinity_tmp"
+    output_json_path = output_results_dir / "predictions/affinity_tmp/affinity_affinity_tmp.json"
     env = os.environ.copy()
     env["BOLTZ_SINGLE_SMILES"] = smiles
     env["BOLTZ_OUTPUT_CSV"] = str(output_csv_path)
     env["BOLTZ_JSON_PATH"] = str(output_json_path)
-    env["BOLTZ_RESULTS_DIR"] = str(molecule_out_dir / "results")
+    env["BOLTZ_RESULTS_DIR"] = str(output_results_dir)
     env["BOLTZ_TMP_YAML"] = str(molecule_out_dir / "affinity_tmp.yaml")
 
     with log_path.open("a", encoding="utf-8") as log_file:
         log_file.write("[BOLTZ] Attempting repository wrapper execution via boltz.py\n")
         log_file.write(f"[BOLTZ] molecule_id={molecule_id} smiles={smiles}\n")
         process = subprocess.run(
-            ["python", str(boltz_script)],
+            [sys.executable, str(boltz_script)],
             cwd=str(repo_root),
             stdout=log_file,
             stderr=log_file,
