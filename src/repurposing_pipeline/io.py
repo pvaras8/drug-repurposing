@@ -10,6 +10,13 @@ from typing import Any
 
 
 REQUIRED_COLUMNS = {"molecule_id", "smiles"}
+EXCLUDED_OUTPUT_COLUMNS = {
+    "log",
+    "boltz_log",
+    "boltz_note",
+    "boltz_output_dir",
+    "ligand_prep_error",
+}
 
 
 @dataclass(frozen=True)
@@ -88,6 +95,7 @@ def write_final_results(results: list[dict[str, Any]], output_path: Path) -> Pat
         header_set: set[str] = set()
         for result in results:
             header_set.update(result.keys())
+        header_set -= EXCLUDED_OUTPUT_COLUMNS
         preferred = [
             "molecule_id",
             "smiles",
