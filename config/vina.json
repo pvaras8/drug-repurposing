@@ -1,6 +1,6 @@
 {
   "run_vina": true,
-  "num_processors": -1,
+  "num_processors": 10,
   "vina_cpu_per_job": 1,
   "exhaustiveness": 8,
   "n_poses": 5,

@@ -48,7 +48,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--receptor-pdb",
         default="",
-        help="Original receptor PDB path (used to rebuild Boltz affinity template)",
+        help="Optional original receptor PDB path (if omitted, PDBQT is used to rebuild Boltz template)",
     )
     parser.add_argument(
         "--pocket-center",

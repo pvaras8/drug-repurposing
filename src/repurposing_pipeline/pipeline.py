@@ -48,6 +48,87 @@ def _build_run_logger(logs_dir: Path) -> logging.Logger:
     return logger
 
 
+def _normalize_minmax(values: list[float]) -> list[float]:
+    """Min-max normalize values into [0, 1]."""
+    if not values:
+        return []
+    vmin = min(values)
+    vmax = max(values)
+    if vmax == vmin:
+        return [1.0 for _ in values]
+    scale = vmax - vmin
+    return [(value - vmin) / scale for value in values]
+
+
+def _write_multiplicative_ranking_csv(results: list[dict[str, Any]], output_path: Path) -> Path | None:
+    """Write multiplicative ranking CSV based on normalized D, P and B metrics."""
+    eligible_rows: list[dict[str, Any]] = []
+    for row in results:
+        if row.get("docking_status") != "completed":
+            continue
+        if row.get("boltz_status") != "completed":
+            continue
+
+        vina_score = row.get("vina_score")
+        affinity_pred = row.get("boltz_affinity_pred_value")
+        affinity_prob = row.get("boltz_affinity_probability_binary")
+        if vina_score is None or affinity_pred is None or affinity_prob is None:
+            continue
+
+        try:
+            docking_strength = -float(vina_score)
+            pred_value = float(affinity_pred)
+            binder_prob = float(affinity_prob)
+        except (TypeError, ValueError):
+            continue
+
+        pchembl_kcal = (6.0 - pred_value) * 1.364
+        enriched = dict(row)
+        enriched["D_docking_strength"] = docking_strength
+        enriched["P_pChEMBL_kcal"] = pchembl_kcal
+        enriched["B_binder_probability"] = binder_prob
+        eligible_rows.append(enriched)
+
+    if not eligible_rows:
+        return None
+
+    d_norm = _normalize_minmax([float(row["D_docking_strength"]) for row in eligible_rows])
+    p_norm = _normalize_minmax([float(row["P_pChEMBL_kcal"]) for row in eligible_rows])
+    b_norm = _normalize_minmax([float(row["B_binder_probability"]) for row in eligible_rows])
+
+    for idx, row in enumerate(eligible_rows):
+        row["D_norm"] = d_norm[idx]
+        row["P_norm"] = p_norm[idx]
+        row["B_norm"] = b_norm[idx]
+        row["multiplicative_score"] = row["D_norm"] * row["P_norm"] * row["B_norm"]
+
+    eligible_rows.sort(key=lambda item: float(item["multiplicative_score"]), reverse=True)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "molecule_id",
+        "drugbank_id",
+        "smiles",
+        "vina_score",
+        "boltz_affinity_pred_value",
+        "boltz_affinity_probability_binary",
+        "D_docking_strength",
+        "P_pChEMBL_kcal",
+        "B_binder_probability",
+        "D_norm",
+        "P_norm",
+        "B_norm",
+        "multiplicative_score",
+    ]
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in eligible_rows:
+            writer.writerow({name: row.get(name, "") for name in fieldnames})
+
+    return output_path
+
+
 def run_pipeline(
     input_csv: Path,
     receptor_path: Path | None,
@@ -169,25 +250,33 @@ def run_pipeline(
 
     boltz_template_path: Path | None = None
     if run_boltz and boltz_selected_ids is not None and boltz_selected_ids:
+        receptor_source: Path | None = None
         receptor_pdb_raw = (docking_setup or {}).get("receptor_pdb") if docking_setup else None
         if receptor_pdb_raw:
-            receptor_pdb_path = Path(str(receptor_pdb_raw))
-            if receptor_pdb_path.exists():
-                boltz_template_path = Path(__file__).resolve().parents[2] / "examples" / "affinity.yaml"
-                summary = build_affinity_template_from_pdb(
-                    pdb_path=receptor_pdb_path,
-                    output_yaml=boltz_template_path,
-                    center=tuple(float(x) for x in docking_setup["box_center"]),
-                    radius=8.0,
-                    chain_id="A",
-                )
-                print(
-                    "Boltz template overwritten:",
-                    str(boltz_template_path),
-                    f"(contacts={summary['contacts_count']}, seq_len={summary['sequence_length']})",
-                )
-        if boltz_template_path is None:
-            print("WARNING: receptor_pdb not provided/found. Using existing affinity template for Boltz.")
+            candidate = Path(str(receptor_pdb_raw))
+            if candidate.exists():
+                receptor_source = candidate
+
+        # Fallback: derive contacts/sequence from the receptor PDBQT if raw PDB is not provided.
+        if receptor_source is None and receptor_path is not None and receptor_path.exists():
+            receptor_source = receptor_path
+
+        if receptor_source is not None:
+            boltz_template_path = Path(__file__).resolve().parents[2] / "examples" / "affinity.yaml"
+            summary = build_affinity_template_from_pdb(
+                pdb_path=receptor_source,
+                output_yaml=boltz_template_path,
+                center=tuple(float(x) for x in docking_setup["box_center"]),
+                radius=8.0,
+                chain_id="A",
+            )
+            print(
+                "Boltz template overwritten:",
+                str(boltz_template_path),
+                f"(source={receptor_source.name}, contacts={summary['contacts_count']}, seq_len={summary['sequence_length']})",
+            )
+        else:
+            print("WARNING: no receptor file available to rebuild affinity template; using existing template.")
 
     if quartile_threshold is not None:
         pass
@@ -316,6 +405,13 @@ def run_pipeline(
 
     ranked = apply_ranking(results, method="separate")
     final_csv = write_final_results(ranked, run_paths.output / "final_results.csv")
+
+    multiplicative_csv = _write_multiplicative_ranking_csv(
+        results=ranked,
+        output_path=run_paths.output / "final_multiplicative_ranked.csv",
+    )
+    if multiplicative_csv is not None:
+        print("Multiplicative ranking CSV:", multiplicative_csv)
 
     logger.info("Run completed output_csv=%s receptor=%s", final_csv, receptor_path)
     return final_csv
