@@ -9,7 +9,7 @@ import json
 from typing import Any
 
 
-REQUIRED_COLUMNS = {"molecule_id", "smiles"}
+REQUIRED_COLUMNS = {"smiles"}
 EXCLUDED_OUTPUT_COLUMNS = {
     "log",
     "boltz_log",
@@ -43,21 +43,39 @@ def read_input_csv(csv_path: Path) -> list[dict[str, str]]:
             raise ValueError("Input CSV has no header")
 
         headers = set(reader.fieldnames)
-        missing = REQUIRED_COLUMNS - headers
+        smiles_candidates = ["smiles", "SMILES"]
+        smiles_key = next((key for key in smiles_candidates if key in headers), None)
+        missing = set()
+        if smiles_key is None:
+            missing = REQUIRED_COLUMNS
         if missing:
             missing_text = ", ".join(sorted(missing))
             raise ValueError(f"Input CSV missing required columns: {missing_text}")
 
         rows: list[dict[str, str]] = []
-        for row in reader:
-            molecule_id = (row.get("molecule_id") or "").strip()
-            smiles = (row.get("smiles") or "").strip()
-            if not molecule_id or not smiles:
+        used_ids: set[str] = set()
+        for idx, row in enumerate(reader, start=1):
+            smiles = (row.get(smiles_key) or "").strip()
+            if not smiles:
                 continue
-            rows.append({key: (value or "").strip() for key, value in row.items()})
+
+            base_id = (
+                (row.get("molecule_id") or "").strip()
+                or (row.get("drugbank_id") or "").strip()
+                or (row.get("external_id") or "").strip()
+            )
+            molecule_id = base_id or f"row_{idx:05d}"
+            if molecule_id in used_ids:
+                molecule_id = f"{molecule_id}_{idx:05d}"
+            used_ids.add(molecule_id)
+
+            clean_row = {key: (value or "").strip() for key, value in row.items()}
+            clean_row["molecule_id"] = molecule_id
+            clean_row["smiles"] = smiles
+            rows.append(clean_row)
 
     if not rows:
-        raise ValueError("Input CSV has no valid rows with molecule_id and smiles")
+        raise ValueError("Input CSV has no valid rows with smiles")
     return rows
 
 
