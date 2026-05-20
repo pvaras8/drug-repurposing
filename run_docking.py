@@ -46,6 +46,11 @@ def _parse_args() -> argparse.Namespace:
         help="Prepared receptor PDBQT path",
     )
     parser.add_argument(
+        "--receptor-pdb",
+        default="",
+        help="Original receptor PDB path (used to rebuild Boltz affinity template)",
+    )
+    parser.add_argument(
         "--pocket-center",
         default="-27.66,51.89,20.25",
         help="Pocket center x,y,z",
@@ -63,6 +68,16 @@ def _parse_args() -> argparse.Namespace:
         help="Vina JSON config path",
     )
     parser.add_argument("--run-boltz", action="store_true", help="Run boltz stage")
+    parser.add_argument(
+        "--boltz-conda-env",
+        default="",
+        help="Conda env name where Boltz should run (e.g., boltz2)",
+    )
+    parser.add_argument(
+        "--boltz-python-executable",
+        default="",
+        help="Absolute Python path for Boltz env (overrides --boltz-conda-env)",
+    )
     parser.add_argument(
         "--allow-non-protonated-receptor",
         action="store_true",
@@ -122,6 +137,7 @@ def main() -> None:
 
     input_csv = Path(args.input_csv).resolve()
     receptor_path = Path(args.receptor_ready_pdbqt).resolve()
+    receptor_pdb_path = Path(args.receptor_pdb).resolve() if args.receptor_pdb else None
     runs_root = Path(args.runs_root).resolve()
     vina_config_path = Path(args.vina_config).resolve()
 
@@ -129,6 +145,8 @@ def main() -> None:
         raise FileNotFoundError(f"Input CSV not found: {input_csv}")
     if not receptor_path.exists():
         raise FileNotFoundError(f"Receptor PDBQT not found: {receptor_path}")
+    if receptor_pdb_path is not None and not receptor_pdb_path.exists():
+        raise FileNotFoundError(f"Receptor PDB not found: {receptor_pdb_path}")
 
     center = parse_triplet(args.pocket_center)
     box_size = parse_triplet(args.pocket_size)
@@ -163,6 +181,14 @@ def main() -> None:
     vina_timeout_seconds = int(vina_cfg.get("timeout_seconds", 300))
     vina_embed_seed = int(vina_cfg.get("embed_seed", 42))
     vina_seed = int(vina_cfg.get("vina_seed", 12345))
+    boltz_conda_env = str(vina_cfg.get("boltz_conda_env", "")).strip()
+    boltz_python_executable = str(vina_cfg.get("boltz_python_executable", "")).strip()
+
+    # CLI arguments override config when provided.
+    if args.boltz_conda_env.strip():
+        boltz_conda_env = args.boltz_conda_env.strip()
+    if args.boltz_python_executable.strip():
+        boltz_python_executable = args.boltz_python_executable.strip()
 
     run_paths = ensure_run_paths(runs_root, args.run_id)
 
@@ -175,6 +201,7 @@ def main() -> None:
     docking_setup = {
         "receptor_mode": "ready",
         "receptor_pdbqt": str(receptor_path),
+        "receptor_pdb": str(receptor_pdb_path) if receptor_pdb_path is not None else "",
         "box_center": [center[0], center[1], center[2]],
         "box_size": [box_size[0], box_size[1], box_size[2]],
         "box_source": "manual",
@@ -208,6 +235,8 @@ def main() -> None:
         vina_embed_seed=vina_embed_seed,
         vina_seed=vina_seed,
         run_boltz=args.run_boltz,
+        boltz_conda_env=(boltz_conda_env or None),
+        boltz_python_executable=(boltz_python_executable or None),
     )
 
     print(f"Docking setup: {setup_json}")

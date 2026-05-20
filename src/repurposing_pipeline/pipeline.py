@@ -17,8 +17,22 @@ from repurposing_pipeline.io import (
 )
 from repurposing_pipeline.ligand_prep import prepare_ligands
 from repurposing_pipeline.ranking import apply_ranking
+from repurposing_pipeline.wrappers.affinity_template_wrapper import build_affinity_template_from_pdb
 from repurposing_pipeline.wrappers.boltz_wrapper import run_boltz_with_existing_wrapper
 from repurposing_pipeline.wrappers.vina_wrapper import run_vina_parallel
+
+
+def _percentile(sorted_values: list[float], q: float) -> float:
+    """Linear percentile interpolation for q in [0,1]."""
+    if not sorted_values:
+        raise ValueError("Cannot compute percentile of empty values")
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    pos = (len(sorted_values) - 1) * q
+    lower = int(pos)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    frac = pos - lower
+    return sorted_values[lower] * (1.0 - frac) + sorted_values[upper] * frac
 
 
 def _build_run_logger(logs_dir: Path) -> logging.Logger:
@@ -52,6 +66,8 @@ def run_pipeline(
     vina_embed_seed: int = 42,
     vina_seed: int = 12345,
     run_boltz: bool = False,
+    boltz_conda_env: str | None = None,
+    boltz_python_executable: str | None = None,
 ) -> Path:
     """Execute the repurposing pipeline and write final_results.csv."""
     run_paths = ensure_run_paths(runs_root, run_id)
@@ -109,29 +125,74 @@ def run_pipeline(
         logger.info("Skipping Vina docking: receptor not provided")
     elif run_vina and docking_setup is None:
         logger.info("Skipping Vina docking: docking setup metadata missing")
-    completed_scores = [
-        float(item.get("vina_score"))
-        for item in vina_by_id.values()
+    completed_scores_with_id = [
+        (molecule_id, float(item.get("vina_score")))
+        for molecule_id, item in vina_by_id.items()
         if item.get("docking_status") == "completed" and item.get("vina_score") is not None
     ]
+    completed_scores = [score for _, score in completed_scores_with_id]
     docking_median: float | None = median(completed_scores) if completed_scores else None
-    docking_threshold: float | None = (
-        (0.75 * docking_median) if docking_median is not None else None
-    )
+    quartile_threshold: float | None = None
 
     boltz_selected_ids: set[str] | None = None
-    if docking_threshold is not None:
+    if completed_scores and docking_median is not None:
+        sorted_scores = sorted(completed_scores)
+        # For docking scores, lower (more negative) is typically better.
+        if docking_median < 0:
+            quartile_threshold = _percentile(sorted_scores, 0.25)
+            boltz_selected_ids = {
+                molecule_id
+                for molecule_id, score in completed_scores_with_id
+                if score <= quartile_threshold
+            }
+        else:
+            quartile_threshold = _percentile(sorted_scores, 0.75)
+            boltz_selected_ids = {
+                molecule_id
+                for molecule_id, score in completed_scores_with_id
+                if score >= quartile_threshold
+            }
+
+    if boltz_selected_ids is not None and boltz_selected_ids:
+        print("Vina completed. Median docking score:", f"{docking_median:.4f}")
+        print("Selected last quartile molecules for Boltz:", len(boltz_selected_ids))
+        selected_rows = [
+            row for row in prepared_rows if row["molecule_id"] in boltz_selected_ids
+        ]
+        selected_rows.sort(key=lambda row: float(vina_by_id[row["molecule_id"]]["vina_score"]))
+        for row in selected_rows:
+            mol_id = row["molecule_id"]
+            score = float(vina_by_id[mol_id]["vina_score"])
+            dbid = row.get("drugbank_id") or row.get("external_id") or ""
+            label = f"{mol_id} ({dbid})" if dbid else mol_id
+            print(f"  - {label}: vina_score={score:.4f}")
+
+    boltz_template_path: Path | None = None
+    if run_boltz and boltz_selected_ids is not None and boltz_selected_ids:
+        receptor_pdb_raw = (docking_setup or {}).get("receptor_pdb") if docking_setup else None
+        if receptor_pdb_raw:
+            receptor_pdb_path = Path(str(receptor_pdb_raw))
+            if receptor_pdb_path.exists():
+                boltz_template_path = Path(__file__).resolve().parents[2] / "examples" / "affinity.yaml"
+                summary = build_affinity_template_from_pdb(
+                    pdb_path=receptor_pdb_path,
+                    output_yaml=boltz_template_path,
+                    center=tuple(float(x) for x in docking_setup["box_center"]),
+                    radius=8.0,
+                    chain_id="A",
+                )
+                print(
+                    "Boltz template overwritten:",
+                    str(boltz_template_path),
+                    f"(contacts={summary['contacts_count']}, seq_len={summary['sequence_length']})",
+                )
+        if boltz_template_path is None:
+            print("WARNING: receptor_pdb not provided/found. Using existing affinity template for Boltz.")
+
+    if quartile_threshold is not None:
+        pass
+    elif docking_median is not None:
         boltz_selected_ids = set()
-        for molecule_id, docking_result in vina_by_id.items():
-            score = docking_result.get("vina_score")
-            if score is None:
-                continue
-            score_f = float(score)
-            if docking_median is not None and docking_median < 0:
-                if score_f <= docking_threshold:
-                    boltz_selected_ids.add(molecule_id)
-            elif score_f >= docking_threshold:
-                boltz_selected_ids.add(molecule_id)
 
     if run_vina and receptor_path is not None and docking_setup is not None:
         vina_csv_path = run_paths.output / "vina_results.csv"
@@ -151,8 +212,8 @@ def run_pipeline(
                     "vina_pose_pdbqt": docking.get("vina_pose_pdbqt", ""),
                     "pass_to_boltz": bool(boltz_selected_ids and mol_id in boltz_selected_ids),
                     "median_vina_score": docking_median if docking_median is not None else "",
-                    "threshold_3_over_4_median": (
-                        docking_threshold if docking_threshold is not None else ""
+                    "last_quartile_threshold": (
+                        quartile_threshold if quartile_threshold is not None else ""
                     ),
                 }
             )
@@ -171,7 +232,7 @@ def run_pipeline(
                     "vina_pose_pdbqt",
                     "pass_to_boltz",
                     "median_vina_score",
-                    "threshold_3_over_4_median",
+                    "last_quartile_threshold",
                 ],
             )
             writer.writeheader()
@@ -221,7 +282,7 @@ def run_pipeline(
         if not pass_to_boltz:
             boltz_result = {
                 "boltz_status": "filtered_out_by_vina",
-                "error": "Filtered out by Vina median threshold",
+                "error": "Filtered out by Vina last quartile threshold",
             }
         elif molecule_id in boltz_by_id:
             boltz_result = boltz_by_id[molecule_id]
@@ -233,6 +294,9 @@ def run_pipeline(
                 run_boltz=run_boltz,
                 logs_dir=run_paths.logs,
                 boltz_results_dir=run_paths.boltz_results,
+                template_path=boltz_template_path,
+                boltz_conda_env=boltz_conda_env,
+                boltz_python_executable=boltz_python_executable,
             )
             boltz_by_id[molecule_id] = boltz_result
 
@@ -242,7 +306,7 @@ def run_pipeline(
             merged["error"] = merged.get("vina_error", "Vina stage failed")
         if merged.get("boltz_status") == "filtered_out_by_vina":
             merged["status"] = "filtered"
-            merged["error"] = "Did not pass Vina threshold for Boltz"
+            merged["error"] = "Did not pass Vina last quartile threshold for Boltz"
         if merged.get("boltz_status") == "failed":
             merged["status"] = "failed"
             merged["error"] = merged.get("error", "Boltz stage failed")

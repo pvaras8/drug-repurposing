@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -18,6 +19,9 @@ def run_boltz_with_existing_wrapper(
     run_boltz: bool,
     logs_dir: Path,
     boltz_results_dir: Path,
+    template_path: Path | None = None,
+    boltz_conda_env: str | None = None,
+    boltz_python_executable: str | None = None,
 ) -> dict[str, Any]:
     """Run Boltz via the repository-level boltz.py wrapper.
 
@@ -54,12 +58,30 @@ def run_boltz_with_existing_wrapper(
     env["BOLTZ_JSON_PATH"] = str(output_json_path)
     env["BOLTZ_RESULTS_DIR"] = str(output_results_dir)
     env["BOLTZ_TMP_YAML"] = str(molecule_out_dir / "affinity_tmp.yaml")
+    if template_path is not None:
+        env["BOLTZ_TEMPLATE_PATH"] = str(template_path)
+
+    if boltz_python_executable:
+        boltz_cmd = [boltz_python_executable, str(boltz_script)]
+    elif boltz_conda_env:
+        conda_bin = shutil.which("conda")
+        if conda_bin is None:
+            return {
+                "boltz_status": "failed",
+                "error": "conda executable not found, cannot run Boltz in alternate environment",
+                "boltz_log": str(log_path),
+                "boltz_output_dir": str(molecule_out_dir),
+            }
+        boltz_cmd = [conda_bin, "run", "-n", boltz_conda_env, "python", str(boltz_script)]
+    else:
+        boltz_cmd = [sys.executable, str(boltz_script)]
 
     with log_path.open("a", encoding="utf-8") as log_file:
         log_file.write("[BOLTZ] Attempting repository wrapper execution via boltz.py\n")
         log_file.write(f"[BOLTZ] molecule_id={molecule_id} smiles={smiles}\n")
+        log_file.write("[BOLTZ] command=" + " ".join(boltz_cmd) + "\n")
         process = subprocess.run(
-            [sys.executable, str(boltz_script)],
+            boltz_cmd,
             cwd=str(repo_root),
             stdout=log_file,
             stderr=log_file,
