@@ -167,6 +167,7 @@ def run_vina_parallel(
     energy_range: float = 3.0,
     fallback_score: float = -1.0,
     timeout_seconds: int = 300,
+    max_mw: float = 600.0,
     sf_name: str = "vina",
     embed_seed: int = 42,
     vina_seed: int = 12345,
@@ -209,18 +210,43 @@ def run_vina_parallel(
         "poses_dir": str(poses_dir),
     }
 
+    from rdkit import Chem
+    from rdkit.Chem.Descriptors import MolWt
+
     tasks: list[tuple[int, str, str, str]] = []
+    by_molecule: dict[str, dict[str, Any]] = {}
     for idx, row in enumerate(rows):
+        molecule_id = str(row["molecule_id"])
+        smiles = str(row.get("smiles", ""))
+        canonical = str(row.get("canonical_smiles", ""))
+        smiles_for_filter = canonical or smiles
+
+        ligand_pdbqt_path = ligands_dir / f"{molecule_id}_input.pdbqt"
+        pose_pdbqt_path = poses_dir / f"{molecule_id}_out.pdbqt"
+
+        mol = Chem.MolFromSmiles(smiles_for_filter)
+        if mol is not None:
+            mw = float(MolWt(mol))
+            if mw > float(max_mw):
+                by_molecule[molecule_id] = {
+                    "molecule_id": molecule_id,
+                    "docking_status": "filtered_mw",
+                    "vina_score": float(fallback_score),
+                    "vina_ligand_pdbqt": str(ligand_pdbqt_path),
+                    "vina_pose_pdbqt": str(pose_pdbqt_path),
+                    "vina_error": f"Filtered before docking: molecular weight {mw:.2f} > {float(max_mw):.2f}",
+                }
+                continue
+
         tasks.append(
             (
                 idx,
-                str(row["molecule_id"]),
-                str(row.get("smiles", "")),
-                str(row.get("canonical_smiles", "")),
+                molecule_id,
+                smiles,
+                canonical,
             )
         )
 
-    by_molecule: dict[str, dict[str, Any]] = {}
     with Pool(
         processes=worker_count,
         initializer=_init_worker,
