@@ -144,7 +144,6 @@ def run_pipeline(
     vina_energy_range: float = 3.0,
     vina_fallback_score: float = -1.0,
     vina_timeout_seconds: int = 300,
-    vina_hard_timeout: bool = False,
     vina_embed_seed: int = 42,
     vina_seed: int = 12345,
     run_boltz: bool = False,
@@ -197,7 +196,6 @@ def run_pipeline(
                 energy_range=vina_energy_range,
                 fallback_score=vina_fallback_score,
                 timeout_seconds=vina_timeout_seconds,
-                hard_timeout=vina_hard_timeout,
                 embed_seed=vina_embed_seed,
                 vina_seed=vina_seed,
             )

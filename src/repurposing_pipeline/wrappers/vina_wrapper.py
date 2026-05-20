@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from multiprocessing import Pool, Process, Queue, cpu_count
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Any
 
@@ -139,21 +139,6 @@ def _dock_task_impl(task: tuple[int, str, str, str]) -> dict[str, Any]:
     }
 
 
-def _dock_task_subprocess(task: tuple[int, str, str, str], cfg: dict[str, Any], queue: Queue) -> None:
-    global WORKER_CFG
-    WORKER_CFG = cfg
-    try:
-        result = _dock_task_impl(task)
-    except Exception as exc:  # noqa: BLE001
-        _, molecule_id, _, _ = task
-        ligands_dir = Path(WORKER_CFG["ligands_dir"])
-        poses_dir = Path(WORKER_CFG["poses_dir"])
-        ligand_pdbqt_path = ligands_dir / f"{molecule_id}_input.pdbqt"
-        pose_pdbqt_path = poses_dir / f"{molecule_id}_out.pdbqt"
-        result = _failure_result(molecule_id, ligand_pdbqt_path, pose_pdbqt_path, str(exc))
-    queue.put(result)
-
-
 def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
     _, molecule_id, _, _ = task
     ligands_dir = Path(WORKER_CFG["ligands_dir"])
@@ -163,31 +148,6 @@ def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
     pose_pdbqt_path = poses_dir / f"{molecule_id}_out.pdbqt"
 
     try:
-        timeout_seconds = int(WORKER_CFG["timeout_seconds"])
-        hard_timeout = bool(WORKER_CFG.get("hard_timeout", False))
-        if hard_timeout and timeout_seconds > 0:
-            queue: Queue = Queue(maxsize=1)
-            child = Process(target=_dock_task_subprocess, args=(task, dict(WORKER_CFG), queue))
-            child.start()
-            child.join(timeout_seconds)
-            if child.is_alive():
-                child.terminate()
-                child.join()
-                return _failure_result(
-                    molecule_id,
-                    ligand_pdbqt_path,
-                    pose_pdbqt_path,
-                    f"Hard timeout after {timeout_seconds}s",
-                )
-            if queue.empty():
-                return _failure_result(
-                    molecule_id,
-                    ligand_pdbqt_path,
-                    pose_pdbqt_path,
-                    "Docking subprocess ended without result",
-                )
-            return queue.get_nowait()
-
         return _dock_task_impl(task)
     except Exception as exc:
         return _failure_result(molecule_id, ligand_pdbqt_path, pose_pdbqt_path, str(exc))
@@ -207,7 +167,6 @@ def run_vina_parallel(
     energy_range: float = 3.0,
     fallback_score: float = -1.0,
     timeout_seconds: int = 300,
-    hard_timeout: bool = False,
     sf_name: str = "vina",
     embed_seed: int = 42,
     vina_seed: int = 12345,
@@ -243,7 +202,6 @@ def run_vina_parallel(
         "vina_cpu_per_job": int(vina_cpu_per_job),
         "fallback_score": float(fallback_score),
         "timeout_seconds": int(timeout_seconds),
-        "hard_timeout": bool(hard_timeout),
         "sf_name": str(sf_name),
         "embed_seed": int(embed_seed),
         "vina_seed": int(vina_seed),
