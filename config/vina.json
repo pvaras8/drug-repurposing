@@ -8,7 +8,7 @@
   "energy_range": 3.0,
   "fallback_score": -1.0,
   "timeout_seconds": 150,
-  "hard_timeout": true,
+  "hard_timeout": false,
   "embed_seed": 42,
   "vina_seed": 12345
 }

@@ -280,7 +280,12 @@ def run_pipeline(
         else:
             print("WARNING: no receptor file available to rebuild affinity template; using existing template.")
 
-    if quartile_threshold is not None:
+    if run_vina:
+        # When Vina is enabled, Boltz must only run for explicitly selected molecules.
+        if boltz_selected_ids is None:
+            boltz_selected_ids = set()
+            print("WARNING: No Vina-selected molecules; Boltz stage will be skipped for all molecules.")
+    elif quartile_threshold is not None:
         pass
     elif docking_median is not None:
         boltz_selected_ids = set()
