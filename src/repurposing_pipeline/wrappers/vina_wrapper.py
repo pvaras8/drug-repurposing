@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, Process, Queue, cpu_count
 from pathlib import Path
-import signal
 from typing import Any
 
 WORKER_CFG: dict[str, Any] = {}
+WORKER_VINA: Any | None = None
 
 
 def _resolve_worker_count(num_processors: int) -> int:
@@ -18,7 +18,27 @@ def _resolve_worker_count(num_processors: int) -> int:
 
 def _init_worker(config: dict[str, Any]) -> None:
     global WORKER_CFG
+    global WORKER_VINA
     WORKER_CFG = config
+
+    WORKER_VINA = None
+    if not bool(WORKER_CFG.get("use_worker_map_cache", True)):
+        return
+
+    from vina import Vina
+
+    vina_obj = Vina(
+        sf_name=WORKER_CFG["sf_name"],
+        cpu=int(WORKER_CFG["vina_cpu_per_job"]),
+        seed=int(WORKER_CFG["vina_seed"]),
+        verbosity=0,
+    )
+    vina_obj.set_receptor(str(WORKER_CFG["receptor_pdbqt"]))
+    vina_obj.compute_vina_maps(
+        center=list(WORKER_CFG["center"]),
+        box_size=list(WORKER_CFG["box_size"]),
+    )
+    WORKER_VINA = vina_obj
 
 
 def _smiles_to_3d_mol(smiles: str, seed: int) -> Any:
@@ -67,7 +87,18 @@ def _mol_to_pdbqt_string(mol: Any) -> str:
     return pdbqt_string
 
 
-def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
+def _failure_result(molecule_id: str, ligand_pdbqt_path: Path, pose_pdbqt_path: Path, message: str) -> dict[str, Any]:
+    return {
+        "molecule_id": molecule_id,
+        "docking_status": "failed",
+        "vina_score": float(WORKER_CFG["fallback_score"]),
+        "vina_ligand_pdbqt": str(ligand_pdbqt_path),
+        "vina_pose_pdbqt": str(pose_pdbqt_path),
+        "vina_error": message,
+    }
+
+
+def _dock_task_impl(task: tuple[int, str, str, str], allow_worker_cache: bool) -> dict[str, Any]:
     idx, molecule_id, smiles, canonical_smiles = task
     ligands_dir = Path(WORKER_CFG["ligands_dir"])
     poses_dir = Path(WORKER_CFG["poses_dir"])
@@ -75,26 +106,21 @@ def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
     ligand_pdbqt_path = ligands_dir / f"{molecule_id}_input.pdbqt"
     pose_pdbqt_path = poses_dir / f"{molecule_id}_out.pdbqt"
 
-    try:
-        from vina import Vina
+    from vina import Vina
 
-        timeout_seconds = int(WORKER_CFG["timeout_seconds"])
+    smiles_for_docking = canonical_smiles or smiles
+    mol = _smiles_to_3d_mol(
+        smiles=smiles_for_docking,
+        seed=int(WORKER_CFG["embed_seed"]) + idx,
+    )
+    ligand_pdbqt = _mol_to_pdbqt_string(mol)
+    ligand_pdbqt_path.write_text(ligand_pdbqt, encoding="utf-8")
 
-        def _raise_timeout(signum: int, frame: Any) -> None:
-            raise TimeoutError(f"Vina timeout after {timeout_seconds}s")
+    vina_obj = None
+    if allow_worker_cache:
+        vina_obj = WORKER_VINA
 
-        previous_handler = signal.signal(signal.SIGALRM, _raise_timeout)
-        if timeout_seconds > 0:
-            signal.alarm(timeout_seconds)
-
-        smiles_for_docking = canonical_smiles or smiles
-        mol = _smiles_to_3d_mol(
-            smiles=smiles_for_docking,
-            seed=int(WORKER_CFG["embed_seed"]) + idx,
-        )
-        ligand_pdbqt = _mol_to_pdbqt_string(mol)
-        ligand_pdbqt_path.write_text(ligand_pdbqt, encoding="utf-8")
-
+    if vina_obj is None:
         vina_obj = Vina(
             sf_name=WORKER_CFG["sf_name"],
             cpu=int(WORKER_CFG["vina_cpu_per_job"]),
@@ -102,56 +128,95 @@ def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
             verbosity=0,
         )
         vina_obj.set_receptor(str(WORKER_CFG["receptor_pdbqt"]))
-        vina_obj.set_ligand_from_string(ligand_pdbqt)
         vina_obj.compute_vina_maps(
             center=list(WORKER_CFG["center"]),
             box_size=list(WORKER_CFG["box_size"]),
         )
-        vina_obj.dock(
-            exhaustiveness=int(WORKER_CFG["exhaustiveness"]),
-            n_poses=int(WORKER_CFG["n_poses"]),
-        )
 
-        energies = vina_obj.energies(
-            n_poses=int(WORKER_CFG["n_poses"]),
-            energy_range=float(WORKER_CFG["energy_range"]),
-        )
-        if energies is None or len(energies) == 0:
-            raise RuntimeError("Vina returned no energies")
+    vina_obj.set_ligand_from_string(ligand_pdbqt)
+    vina_obj.dock(
+        exhaustiveness=int(WORKER_CFG["exhaustiveness"]),
+        n_poses=int(WORKER_CFG["n_poses"]),
+    )
 
-        best_score = float(energies[0][0])
+    energies = vina_obj.energies(
+        n_poses=int(WORKER_CFG["n_poses"]),
+        energy_range=float(WORKER_CFG["energy_range"]),
+    )
+    if energies is None or len(energies) == 0:
+        raise RuntimeError("Vina returned no energies")
 
-        vina_obj.write_poses(
-            str(pose_pdbqt_path),
-            n_poses=int(WORKER_CFG["write_n_poses"]),
-            energy_range=float(WORKER_CFG["energy_range"]),
-            overwrite=True,
-        )
+    best_score = float(energies[0][0])
 
-        if timeout_seconds > 0:
-            signal.alarm(0)
-        signal.signal(signal.SIGALRM, previous_handler)
+    vina_obj.write_poses(
+        str(pose_pdbqt_path),
+        n_poses=int(WORKER_CFG["write_n_poses"]),
+        energy_range=float(WORKER_CFG["energy_range"]),
+        overwrite=True,
+    )
 
-        return {
-            "molecule_id": molecule_id,
-            "docking_status": "completed",
-            "vina_score": best_score,
-            "vina_ligand_pdbqt": str(ligand_pdbqt_path),
-            "vina_pose_pdbqt": str(pose_pdbqt_path),
-            "vina_error": "",
-        }
+    return {
+        "molecule_id": molecule_id,
+        "docking_status": "completed",
+        "vina_score": best_score,
+        "vina_ligand_pdbqt": str(ligand_pdbqt_path),
+        "vina_pose_pdbqt": str(pose_pdbqt_path),
+        "vina_error": "",
+    }
+
+
+def _dock_task_subprocess(task: tuple[int, str, str, str], cfg: dict[str, Any], queue: Queue) -> None:
+    global WORKER_CFG
+    WORKER_CFG = cfg
+    try:
+        result = _dock_task_impl(task, allow_worker_cache=False)
+    except Exception as exc:  # noqa: BLE001
+        _, molecule_id, _, _ = task
+        ligands_dir = Path(WORKER_CFG["ligands_dir"])
+        poses_dir = Path(WORKER_CFG["poses_dir"])
+        ligand_pdbqt_path = ligands_dir / f"{molecule_id}_input.pdbqt"
+        pose_pdbqt_path = poses_dir / f"{molecule_id}_out.pdbqt"
+        result = _failure_result(molecule_id, ligand_pdbqt_path, pose_pdbqt_path, str(exc))
+    queue.put(result)
+
+
+def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
+    _, molecule_id, _, _ = task
+    ligands_dir = Path(WORKER_CFG["ligands_dir"])
+    poses_dir = Path(WORKER_CFG["poses_dir"])
+
+    ligand_pdbqt_path = ligands_dir / f"{molecule_id}_input.pdbqt"
+    pose_pdbqt_path = poses_dir / f"{molecule_id}_out.pdbqt"
+
+    try:
+        timeout_seconds = int(WORKER_CFG["timeout_seconds"])
+        hard_timeout = bool(WORKER_CFG.get("hard_timeout", False))
+        if hard_timeout and timeout_seconds > 0:
+            queue: Queue = Queue(maxsize=1)
+            child = Process(target=_dock_task_subprocess, args=(task, dict(WORKER_CFG), queue))
+            child.start()
+            child.join(timeout_seconds)
+            if child.is_alive():
+                child.terminate()
+                child.join()
+                return _failure_result(
+                    molecule_id,
+                    ligand_pdbqt_path,
+                    pose_pdbqt_path,
+                    f"Hard timeout after {timeout_seconds}s",
+                )
+            if queue.empty():
+                return _failure_result(
+                    molecule_id,
+                    ligand_pdbqt_path,
+                    pose_pdbqt_path,
+                    "Docking subprocess ended without result",
+                )
+            return queue.get_nowait()
+
+        return _dock_task_impl(task, allow_worker_cache=bool(WORKER_CFG.get("use_worker_map_cache", True)))
     except Exception as exc:
-        timeout_seconds = int(WORKER_CFG.get("timeout_seconds", 0))
-        if timeout_seconds > 0:
-            signal.alarm(0)
-        return {
-            "molecule_id": molecule_id,
-            "docking_status": "failed",
-            "vina_score": float(WORKER_CFG["fallback_score"]),
-            "vina_ligand_pdbqt": str(ligand_pdbqt_path),
-            "vina_pose_pdbqt": str(pose_pdbqt_path),
-            "vina_error": str(exc),
-        }
+        return _failure_result(molecule_id, ligand_pdbqt_path, pose_pdbqt_path, str(exc))
 
 
 def run_vina_parallel(
@@ -168,6 +233,8 @@ def run_vina_parallel(
     energy_range: float = 3.0,
     fallback_score: float = -1.0,
     timeout_seconds: int = 300,
+    hard_timeout: bool = False,
+    use_worker_map_cache: bool = True,
     sf_name: str = "vina",
     embed_seed: int = 42,
     vina_seed: int = 12345,
@@ -203,6 +270,8 @@ def run_vina_parallel(
         "vina_cpu_per_job": int(vina_cpu_per_job),
         "fallback_score": float(fallback_score),
         "timeout_seconds": int(timeout_seconds),
+        "hard_timeout": bool(hard_timeout),
+        "use_worker_map_cache": bool(use_worker_map_cache),
         "sf_name": str(sf_name),
         "embed_seed": int(embed_seed),
         "vina_seed": int(vina_seed),

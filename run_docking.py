@@ -179,6 +179,8 @@ def main() -> None:
     vina_energy_range = float(vina_cfg.get("energy_range", 3.0))
     vina_fallback_score = float(vina_cfg.get("fallback_score", -1.0))
     vina_timeout_seconds = int(vina_cfg.get("timeout_seconds", 300))
+    vina_hard_timeout = bool(vina_cfg.get("hard_timeout", False))
+    vina_use_worker_map_cache = bool(vina_cfg.get("use_worker_map_cache", True))
     vina_embed_seed = int(vina_cfg.get("embed_seed", 42))
     vina_seed = int(vina_cfg.get("vina_seed", 12345))
     boltz_conda_env = str(vina_cfg.get("boltz_conda_env", "")).strip()
@@ -232,6 +234,8 @@ def main() -> None:
         vina_energy_range=vina_energy_range,
         vina_fallback_score=vina_fallback_score,
         vina_timeout_seconds=vina_timeout_seconds,
+        vina_hard_timeout=vina_hard_timeout,
+        vina_use_worker_map_cache=vina_use_worker_map_cache,
         vina_embed_seed=vina_embed_seed,
         vina_seed=vina_seed,
         run_boltz=args.run_boltz,
