@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 WORKER_CFG: dict[str, Any] = {}
-WORKER_VINA: Any | None = None
 
 
 def _resolve_worker_count(num_processors: int) -> int:
@@ -18,27 +17,7 @@ def _resolve_worker_count(num_processors: int) -> int:
 
 def _init_worker(config: dict[str, Any]) -> None:
     global WORKER_CFG
-    global WORKER_VINA
     WORKER_CFG = config
-
-    WORKER_VINA = None
-    if not bool(WORKER_CFG.get("use_worker_map_cache", True)):
-        return
-
-    from vina import Vina
-
-    vina_obj = Vina(
-        sf_name=WORKER_CFG["sf_name"],
-        cpu=int(WORKER_CFG["vina_cpu_per_job"]),
-        seed=int(WORKER_CFG["vina_seed"]),
-        verbosity=0,
-    )
-    vina_obj.set_receptor(str(WORKER_CFG["receptor_pdbqt"]))
-    vina_obj.compute_vina_maps(
-        center=list(WORKER_CFG["center"]),
-        box_size=list(WORKER_CFG["box_size"]),
-    )
-    WORKER_VINA = vina_obj
 
 
 def _smiles_to_3d_mol(smiles: str, seed: int) -> Any:
@@ -98,7 +77,7 @@ def _failure_result(molecule_id: str, ligand_pdbqt_path: Path, pose_pdbqt_path: 
     }
 
 
-def _dock_task_impl(task: tuple[int, str, str, str], allow_worker_cache: bool) -> dict[str, Any]:
+def _dock_task_impl(task: tuple[int, str, str, str]) -> dict[str, Any]:
     idx, molecule_id, smiles, canonical_smiles = task
     ligands_dir = Path(WORKER_CFG["ligands_dir"])
     poses_dir = Path(WORKER_CFG["poses_dir"])
@@ -116,22 +95,17 @@ def _dock_task_impl(task: tuple[int, str, str, str], allow_worker_cache: bool) -
     ligand_pdbqt = _mol_to_pdbqt_string(mol)
     ligand_pdbqt_path.write_text(ligand_pdbqt, encoding="utf-8")
 
-    vina_obj = None
-    if allow_worker_cache:
-        vina_obj = WORKER_VINA
-
-    if vina_obj is None:
-        vina_obj = Vina(
-            sf_name=WORKER_CFG["sf_name"],
-            cpu=int(WORKER_CFG["vina_cpu_per_job"]),
-            seed=int(WORKER_CFG["vina_seed"]) + idx,
-            verbosity=0,
-        )
-        vina_obj.set_receptor(str(WORKER_CFG["receptor_pdbqt"]))
-        vina_obj.compute_vina_maps(
-            center=list(WORKER_CFG["center"]),
-            box_size=list(WORKER_CFG["box_size"]),
-        )
+    vina_obj = Vina(
+        sf_name=WORKER_CFG["sf_name"],
+        cpu=int(WORKER_CFG["vina_cpu_per_job"]),
+        seed=int(WORKER_CFG["vina_seed"]) + idx,
+        verbosity=0,
+    )
+    vina_obj.set_receptor(str(WORKER_CFG["receptor_pdbqt"]))
+    vina_obj.compute_vina_maps(
+        center=list(WORKER_CFG["center"]),
+        box_size=list(WORKER_CFG["box_size"]),
+    )
 
     vina_obj.set_ligand_from_string(ligand_pdbqt)
     vina_obj.dock(
@@ -169,7 +143,7 @@ def _dock_task_subprocess(task: tuple[int, str, str, str], cfg: dict[str, Any], 
     global WORKER_CFG
     WORKER_CFG = cfg
     try:
-        result = _dock_task_impl(task, allow_worker_cache=False)
+        result = _dock_task_impl(task)
     except Exception as exc:  # noqa: BLE001
         _, molecule_id, _, _ = task
         ligands_dir = Path(WORKER_CFG["ligands_dir"])
@@ -214,7 +188,7 @@ def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
                 )
             return queue.get_nowait()
 
-        return _dock_task_impl(task, allow_worker_cache=bool(WORKER_CFG.get("use_worker_map_cache", True)))
+        return _dock_task_impl(task)
     except Exception as exc:
         return _failure_result(molecule_id, ligand_pdbqt_path, pose_pdbqt_path, str(exc))
 
@@ -234,7 +208,6 @@ def run_vina_parallel(
     fallback_score: float = -1.0,
     timeout_seconds: int = 300,
     hard_timeout: bool = False,
-    use_worker_map_cache: bool = True,
     sf_name: str = "vina",
     embed_seed: int = 42,
     vina_seed: int = 12345,
@@ -271,7 +244,6 @@ def run_vina_parallel(
         "fallback_score": float(fallback_score),
         "timeout_seconds": int(timeout_seconds),
         "hard_timeout": bool(hard_timeout),
-        "use_worker_map_cache": bool(use_worker_map_cache),
         "sf_name": str(sf_name),
         "embed_seed": int(embed_seed),
         "vina_seed": int(vina_seed),

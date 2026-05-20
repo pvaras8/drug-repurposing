@@ -9,7 +9,6 @@
   "fallback_score": -1.0,
   "timeout_seconds": 150,
   "hard_timeout": true,
-  "use_worker_map_cache": true,
   "embed_seed": 42,
   "vina_seed": 12345
 }
