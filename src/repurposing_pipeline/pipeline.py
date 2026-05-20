@@ -344,7 +344,7 @@ def run_pipeline(
         canonical_smiles = row.get("canonical_smiles")
         base_result: dict[str, Any] = {
             "molecule_id": molecule_id,
-            "datasets": row.get("datasets", ""),
+            "dataset": row.get("dataset") or row.get("datasets", ""),
             "smiles": input_smiles,
             "canonical_smiles": canonical_smiles,
             "ligand_prep_status": row.get("ligand_prep_status"),

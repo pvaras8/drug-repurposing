@@ -1,0 +1,1 @@
+python run_docking.py --input-csv=input_csvs/batch_pocket_3.csv --receptor-ready-pdbqt=pdbs/5tol_receptor_prepared.pdbqt --pocket-center="-27.66,51.89,20.25" --pocket-size="20,20,20" --run-id=5tol_batch_pocket_3_20260520 --no-prompt --allow-non-protonated-receptor
