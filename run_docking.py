@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 import sys
@@ -72,7 +73,48 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable interactive confirmation prompts",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Limit to first N valid input rows (0 means all)",
+    )
     return parser.parse_args()
+
+
+def _build_limited_csv(input_csv: Path, output_csv: Path, limit: int) -> Path:
+    """Write a subset CSV containing the first N valid rows by SMILES presence."""
+    if limit <= 0:
+        return input_csv
+
+    with input_csv.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f"Input CSV has no header: {input_csv}")
+
+        fieldnames = list(reader.fieldnames)
+        smiles_key = "smiles" if "smiles" in fieldnames else "SMILES" if "SMILES" in fieldnames else None
+        if smiles_key is None:
+            raise ValueError("Input CSV missing SMILES/smiles column")
+
+        rows: list[dict[str, str]] = []
+        for row in reader:
+            smiles = (row.get(smiles_key) or "").strip()
+            if not smiles:
+                continue
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+
+    if not rows:
+        raise ValueError("No valid rows found while building limited input CSV")
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with output_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return output_csv
 
 
 def main() -> None:
@@ -123,6 +165,13 @@ def main() -> None:
     vina_seed = int(vina_cfg.get("vina_seed", 12345))
 
     run_paths = ensure_run_paths(runs_root, args.run_id)
+
+    input_for_run = input_csv
+    if args.limit > 0:
+        subset_csv = run_paths.root / f"input_first_{args.limit}.csv"
+        input_for_run = _build_limited_csv(input_csv=input_csv, output_csv=subset_csv, limit=args.limit)
+        print(f"Using limited input CSV: {input_for_run}")
+
     docking_setup = {
         "receptor_mode": "ready",
         "receptor_pdbqt": str(receptor_path),
@@ -142,7 +191,7 @@ def main() -> None:
     setup_json.write_text(json.dumps(docking_setup, indent=2), encoding="utf-8")
 
     final_csv = run_pipeline(
-        input_csv=input_csv,
+        input_csv=input_for_run,
         receptor_path=receptor_path,
         docking_setup=docking_setup,
         runs_root=runs_root,
