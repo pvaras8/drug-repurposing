@@ -37,9 +37,9 @@ def _build_run_logger(logs_dir: Path) -> logging.Logger:
 def run_pipeline(
     input_csv: Path,
     receptor_path: Path | None,
-    docking_setup: dict[str, Any] | None = None,
     runs_root: Path,
     run_id: str,
+    docking_setup: dict[str, Any] | None = None,
     run_vina: bool = True,
     vina_num_processors: int = -1,
     vina_cpu_per_job: int = 1,
