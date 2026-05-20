@@ -1,0 +1,13 @@
+{
+  "run_vina": true,
+  "num_processors": -1,
+  "vina_cpu_per_job": 1,
+  "exhaustiveness": 16,
+  "n_poses": 10,
+  "write_n_poses": 10,
+  "energy_range": 3.0,
+  "fallback_score": -1.0,
+  "timeout_seconds": 300,
+  "embed_seed": 42,
+  "vina_seed": 12345
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import click
+from click.core import ParameterSource
 
 from repurposing_pipeline.io import ensure_run_paths
 from repurposing_pipeline.pipeline import run_pipeline
@@ -23,6 +24,19 @@ def _prompt_path(text: str, must_exist: bool = True) -> Path:
             type=click.Path(path_type=Path, exists=must_exist, file_okay=True, dir_okay=False),
         )
     ).resolve()
+
+
+def _load_vina_config(path: Path) -> dict[str, object]:
+    """Load Vina config from JSON file if it exists."""
+    if not path.exists():
+        return {}
+
+    with path.open("r", encoding="utf-8") as handle:
+        loaded = json.load(handle)
+
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Invalid Vina config format in {path}: expected a mapping")
+    return loaded
 
 
 def _resolve_docking_inputs(
@@ -117,6 +131,13 @@ def _resolve_docking_inputs(
 @click.option("--runs-root", type=click.Path(path_type=Path), default=Path("runs"), show_default=True)
 @click.option("--run-id", type=str, default="run_001", show_default=True)
 @click.option(
+    "--vina-config",
+    type=click.Path(path_type=Path, exists=False),
+    default=Path("config/vina.json"),
+    show_default=True,
+    help="Path to Vina JSON config file.",
+)
+@click.option(
     "--run-vina/--no-run-vina",
     default=True,
     show_default=True,
@@ -138,7 +159,9 @@ def _resolve_docking_inputs(
     default=False,
     help="Attempt execution via repository-level boltz.py wrapper.",
 )
+@click.pass_context
 def main(
+    ctx: click.Context,
     input_csv: Path,
     receptor: Path | None,
     receptor_ready_pdbqt: Path | None,
@@ -148,6 +171,7 @@ def main(
     interactive_docking_setup: bool,
     runs_root: Path,
     run_id: str,
+    vina_config: Path,
     run_vina: bool,
     vina_num_processors: int,
     vina_cpu_per_job: int,
@@ -162,6 +186,36 @@ def main(
     run_boltz: bool,
 ) -> None:
     """Run the repurposing pipeline with optional receptor/pocket setup for docking."""
+    config_path = vina_config.resolve()
+    try:
+        vina_cfg = _load_vina_config(config_path)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    # If user did not pass a CLI value explicitly, take value from config file.
+    if ctx.get_parameter_source("run_vina") == ParameterSource.DEFAULT:
+        run_vina = bool(vina_cfg.get("run_vina", run_vina))
+    if ctx.get_parameter_source("vina_num_processors") == ParameterSource.DEFAULT:
+        vina_num_processors = int(vina_cfg.get("num_processors", vina_num_processors))
+    if ctx.get_parameter_source("vina_cpu_per_job") == ParameterSource.DEFAULT:
+        vina_cpu_per_job = int(vina_cfg.get("vina_cpu_per_job", vina_cpu_per_job))
+    if ctx.get_parameter_source("vina_exhaustiveness") == ParameterSource.DEFAULT:
+        vina_exhaustiveness = int(vina_cfg.get("exhaustiveness", vina_exhaustiveness))
+    if ctx.get_parameter_source("vina_n_poses") == ParameterSource.DEFAULT:
+        vina_n_poses = int(vina_cfg.get("n_poses", vina_n_poses))
+    if ctx.get_parameter_source("vina_write_n_poses") == ParameterSource.DEFAULT:
+        vina_write_n_poses = int(vina_cfg.get("write_n_poses", vina_write_n_poses))
+    if ctx.get_parameter_source("vina_energy_range") == ParameterSource.DEFAULT:
+        vina_energy_range = float(vina_cfg.get("energy_range", vina_energy_range))
+    if ctx.get_parameter_source("vina_fallback_score") == ParameterSource.DEFAULT:
+        vina_fallback_score = float(vina_cfg.get("fallback_score", vina_fallback_score))
+    if ctx.get_parameter_source("vina_timeout_seconds") == ParameterSource.DEFAULT:
+        vina_timeout_seconds = int(vina_cfg.get("timeout_seconds", vina_timeout_seconds))
+    if ctx.get_parameter_source("vina_embed_seed") == ParameterSource.DEFAULT:
+        vina_embed_seed = int(vina_cfg.get("embed_seed", vina_embed_seed))
+    if ctx.get_parameter_source("vina_seed") == ParameterSource.DEFAULT:
+        vina_seed = int(vina_cfg.get("vina_seed", vina_seed))
+
     run_paths = ensure_run_paths(runs_root, run_id)
 
     try:
