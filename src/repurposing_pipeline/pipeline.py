@@ -145,8 +145,10 @@ def run_pipeline(
     vina_fallback_score: float = -1.0,
     vina_timeout_seconds: int = 300,
     vina_max_mw: float = 600.0,
+    vina_sf_name: str = "vina",
     vina_embed_seed: int = 42,
     vina_seed: int = 12345,
+    vina_save_every: int = 25,
     run_boltz: bool = False,
     boltz_conda_env: str | None = None,
     boltz_python_executable: str | None = None,
@@ -183,6 +185,18 @@ def run_pipeline(
 
         if pending_rows:
             logger.info("Starting Vina docking for %s molecules", len(pending_rows))
+            logger.info(
+                "Vina settings workers=%s cpu_per_job=%s sf_name=%s save_every=%s",
+                vina_num_processors,
+                vina_cpu_per_job,
+                vina_sf_name,
+                vina_save_every,
+            )
+            logger.info(
+                "Vina artifacts directories ligands=%s poses=%s",
+                run_paths.vina_results / "ligands",
+                run_paths.vina_results / "poses",
+            )
             vina_results = run_vina_parallel(
                 rows=pending_rows,
                 receptor_pdbqt=receptor_path,
@@ -198,8 +212,11 @@ def run_pipeline(
                 fallback_score=vina_fallback_score,
                 timeout_seconds=vina_timeout_seconds,
                 max_mw=vina_max_mw,
+                sf_name=vina_sf_name,
                 embed_seed=vina_embed_seed,
                 vina_seed=vina_seed,
+                save_every=vina_save_every,
+                progress_csv_path=run_paths.output / "vina_results_partial.csv",
             )
             vina_by_id.update(vina_results)
             save_checkpoint(run_paths.checkpoints, "vina", {"by_molecule": vina_by_id})

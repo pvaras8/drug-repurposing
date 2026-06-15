@@ -42,8 +42,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--receptor-ready-pdbqt",
-        default=str(REPO_ROOT / "pdbs/5_tol_prepared.pdbqt"),
-        help="Prepared receptor PDBQT path",
+        required=True,
+        help="Prepared receptor PDBQT path (required)",
     )
     parser.add_argument(
         "--receptor-pdb",
@@ -180,8 +180,10 @@ def main() -> None:
     vina_fallback_score = float(vina_cfg.get("fallback_score", -1.0))
     vina_timeout_seconds = int(vina_cfg.get("timeout_seconds", 300))
     vina_max_mw = float(vina_cfg.get("max_mw", 600.0))
+    vina_sf_name = str(vina_cfg.get("sf_name", "vina"))
     vina_embed_seed = int(vina_cfg.get("embed_seed", 42))
     vina_seed = int(vina_cfg.get("vina_seed", 12345))
+    vina_save_every = int(vina_cfg.get("save_every", 25))
     boltz_conda_env = str(vina_cfg.get("boltz_conda_env", "")).strip()
     boltz_python_executable = str(vina_cfg.get("boltz_python_executable", "")).strip()
 
@@ -234,8 +236,10 @@ def main() -> None:
         vina_fallback_score=vina_fallback_score,
         vina_timeout_seconds=vina_timeout_seconds,
         vina_max_mw=vina_max_mw,
+        vina_sf_name=vina_sf_name,
         vina_embed_seed=vina_embed_seed,
         vina_seed=vina_seed,
+        vina_save_every=vina_save_every,
         run_boltz=args.run_boltz,
         boltz_conda_env=(boltz_conda_env or None),
         boltz_python_executable=(boltz_python_executable or None),

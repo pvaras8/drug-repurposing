@@ -1,0 +1,7 @@
+ID,filename,SMILES,status
+1,117_pred_4_pocket_5A.pdb.mol,CCc1cc(C)nc(C(=O)Nc2cccc(C(O)[C@@H]3O[C@H](C(=O)NCc4ccco4)CC3O)c2)n1,OK_first_line
+2,118_pred_4_pocket_5A.pdb.mol,CCc1cc(C)nc(C(=O)Nc2cccc(C(O)[C@@H]3O[C@H](C(=O)NCc4nccs4)CC3O)c2)n1,OK_first_line
+3,119_pred_4_pocket_5A.pdb.mol,COc1cc(C)nc(C(=O)Nc2cccc(C(O)[C@@H]3O[C@H](C(=O)NCc4ccco4)CC3O)c2)n1,OK_first_line
+4,120_pred_4_pocket_5A.pdb.mol,COc1cc(C)nc(C(=O)Nc2cccc(C(O)[C@@H]3O[C@H](C(=O)NCc4nnn[n-]4)CC3O)c2)n1,OK_first_line
+5,121_pred_4_pocket_5A.pdb.mol,COc1cc(C)nc(C(=O)Nc2cccc(C(O)[C@@H]3O[C@H](C(=O)NCc4nccn4C)CC3O)c2)n1,OK_first_line
+6,124_pred_4_pocket_5A.pdb.mol,CCc1cc(C)nc(C(=O)Nc2cccc(C(O)[C@@H]3O[C@H](C(=O)N(C)C)CC3O)c2)n1,OK_first_line

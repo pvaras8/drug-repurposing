@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,15 @@ def _resolve_worker_count(num_processors: int) -> int:
     if num_processors == -1:
         return max(1, cpu_count() - 1)
     return max(1, num_processors)
+
+
+def _resolve_safe_parallelism(num_processors: int, vina_cpu_per_job: int) -> int:
+    """Limit process count to avoid excessive CPU oversubscription."""
+    requested_workers = _resolve_worker_count(num_processors)
+    cpus_per_job = max(1, int(vina_cpu_per_job))
+    available = max(1, cpu_count())
+    max_workers_by_cpu = max(1, available // cpus_per_job)
+    return max(1, min(requested_workers, max_workers_by_cpu))
 
 
 def _init_worker(config: dict[str, Any]) -> None:
@@ -153,6 +163,46 @@ def _dock_task(task: tuple[int, str, str, str]) -> dict[str, Any]:
         return _failure_result(molecule_id, ligand_pdbqt_path, pose_pdbqt_path, str(exc))
 
 
+def _write_progress_csv(
+    *,
+    by_molecule: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+    progress_csv_path: Path,
+) -> None:
+    """Persist a partial CSV compatible with downstream inspection."""
+    progress_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "molecule_id",
+        "drugbank_id",
+        "smiles",
+        "canonical_smiles",
+        "docking_status",
+        "vina_score",
+        "vina_error",
+        "vina_ligand_pdbqt",
+        "vina_pose_pdbqt",
+    ]
+    with progress_csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            molecule_id = str(row.get("molecule_id", ""))
+            docking = by_molecule.get(molecule_id, {})
+            writer.writerow(
+                {
+                    "molecule_id": molecule_id,
+                    "drugbank_id": row.get("drugbank_id") or row.get("external_id") or "",
+                    "smiles": row.get("smiles", ""),
+                    "canonical_smiles": row.get("canonical_smiles", ""),
+                    "docking_status": docking.get("docking_status", "pending"),
+                    "vina_score": docking.get("vina_score", ""),
+                    "vina_error": docking.get("vina_error", ""),
+                    "vina_ligand_pdbqt": docking.get("vina_ligand_pdbqt", ""),
+                    "vina_pose_pdbqt": docking.get("vina_pose_pdbqt", ""),
+                }
+            )
+
+
 def run_vina_parallel(
     rows: list[dict[str, Any]],
     receptor_pdbqt: Path,
@@ -171,9 +221,11 @@ def run_vina_parallel(
     sf_name: str = "vina",
     embed_seed: int = 42,
     vina_seed: int = 12345,
+    save_every: int = 25,
+    progress_csv_path: Path | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Dock multiple molecules with Vina and return results indexed by molecule_id."""
-    worker_count = _resolve_worker_count(num_processors)
+    worker_count = _resolve_safe_parallelism(num_processors, vina_cpu_per_job)
     receptor_resolved = receptor_pdbqt.resolve()
     if not receptor_resolved.exists():
         raise FileNotFoundError(f"Receptor PDBQT not found: {receptor_resolved}")
@@ -247,6 +299,7 @@ def run_vina_parallel(
             )
         )
 
+    completed_count = 0
     with Pool(
         processes=worker_count,
         initializer=_init_worker,
@@ -254,5 +307,19 @@ def run_vina_parallel(
     ) as pool:
         for result in pool.imap_unordered(_dock_task, tasks):
             by_molecule[result["molecule_id"]] = result
+            completed_count += 1
+            if progress_csv_path is not None and save_every > 0 and completed_count % save_every == 0:
+                _write_progress_csv(
+                    by_molecule=by_molecule,
+                    rows=rows,
+                    progress_csv_path=progress_csv_path,
+                )
+
+    if progress_csv_path is not None:
+        _write_progress_csv(
+            by_molecule=by_molecule,
+            rows=rows,
+            progress_csv_path=progress_csv_path,
+        )
 
     return by_molecule
