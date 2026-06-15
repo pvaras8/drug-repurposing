@@ -35,6 +35,40 @@ def _percentile(sorted_values: list[float], q: float) -> float:
     return sorted_values[lower] * (1.0 - frac) + sorted_values[upper] * frac
 
 
+def _select_boltz_candidates(
+    completed_scores_with_id: list[tuple[str, float]],
+    max_molecules: int,
+) -> tuple[set[str], float | None]:
+    """Select the favorable Vina quartile, capped to the best scores."""
+    if max_molecules <= 0:
+        raise ValueError("max_molecules must be greater than zero")
+    if not completed_scores_with_id:
+        return set(), None
+
+    scores = [score for _, score in completed_scores_with_id]
+    sorted_scores = sorted(scores)
+    docking_median = median(scores)
+    lower_is_better = docking_median < 0
+    quartile_threshold = _percentile(sorted_scores, 0.25 if lower_is_better else 0.75)
+
+    if lower_is_better:
+        favorable = [
+            (molecule_id, score)
+            for molecule_id, score in completed_scores_with_id
+            if score <= quartile_threshold
+        ]
+        favorable.sort(key=lambda item: (item[1], item[0]))
+    else:
+        favorable = [
+            (molecule_id, score)
+            for molecule_id, score in completed_scores_with_id
+            if score >= quartile_threshold
+        ]
+        favorable.sort(key=lambda item: (-item[1], item[0]))
+
+    return {molecule_id for molecule_id, _ in favorable[:max_molecules]}, quartile_threshold
+
+
 def _build_run_logger(logs_dir: Path) -> logging.Logger:
     logger = logging.getLogger("repurposing_pipeline")
     logger.setLevel(logging.INFO)
@@ -150,6 +184,7 @@ def run_pipeline(
     vina_seed: int = 12345,
     vina_save_every: int = 25,
     run_boltz: bool = False,
+    boltz_max_molecules: int = 70,
     boltz_conda_env: str | None = None,
     boltz_python_executable: str | None = None,
 ) -> Path:
@@ -236,26 +271,17 @@ def run_pipeline(
 
     boltz_selected_ids: set[str] | None = None
     if completed_scores and docking_median is not None:
-        sorted_scores = sorted(completed_scores)
-        # For docking scores, lower (more negative) is typically better.
-        if docking_median < 0:
-            quartile_threshold = _percentile(sorted_scores, 0.25)
-            boltz_selected_ids = {
-                molecule_id
-                for molecule_id, score in completed_scores_with_id
-                if score <= quartile_threshold
-            }
-        else:
-            quartile_threshold = _percentile(sorted_scores, 0.75)
-            boltz_selected_ids = {
-                molecule_id
-                for molecule_id, score in completed_scores_with_id
-                if score >= quartile_threshold
-            }
+        boltz_selected_ids, quartile_threshold = _select_boltz_candidates(
+            completed_scores_with_id,
+            max_molecules=boltz_max_molecules,
+        )
 
     if boltz_selected_ids is not None and boltz_selected_ids:
         print("Vina completed. Median docking score:", f"{docking_median:.4f}")
-        print("Selected last quartile molecules for Boltz:", len(boltz_selected_ids))
+        print(
+            f"Selected best Vina molecules for Boltz: {len(boltz_selected_ids)} "
+            f"(favorable quartile, max {boltz_max_molecules})"
+        )
         selected_rows = [
             row for row in prepared_rows if row["molecule_id"] in boltz_selected_ids
         ]
@@ -328,6 +354,7 @@ def run_pipeline(
                     "last_quartile_threshold": (
                         quartile_threshold if quartile_threshold is not None else ""
                     ),
+                    "boltz_selection_limit": boltz_max_molecules,
                 }
             )
 
@@ -346,6 +373,7 @@ def run_pipeline(
                     "pass_to_boltz",
                     "median_vina_score",
                     "last_quartile_threshold",
+                    "boltz_selection_limit",
                 ],
             )
             writer.writeheader()
@@ -396,7 +424,7 @@ def run_pipeline(
         if not pass_to_boltz:
             boltz_result = {
                 "boltz_status": "filtered_out_by_vina",
-                "error": "Filtered out by Vina last quartile threshold",
+                "error": "Filtered out by Vina quartile and top-score limit",
             }
         elif molecule_id in boltz_by_id:
             boltz_result = boltz_by_id[molecule_id]
@@ -420,7 +448,7 @@ def run_pipeline(
             merged["error"] = merged.get("vina_error", "Vina stage failed")
         if merged.get("boltz_status") == "filtered_out_by_vina":
             merged["status"] = "filtered"
-            merged["error"] = "Did not pass Vina last quartile threshold for Boltz"
+            merged["error"] = "Did not pass Vina quartile and top-score limit for Boltz"
         if merged.get("boltz_status") == "failed":
             merged["status"] = "failed"
             merged["error"] = merged.get("error", "Boltz stage failed")

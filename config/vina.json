@@ -10,5 +10,6 @@
   "timeout_seconds": 150,
   "max_mw": 500.0,
   "embed_seed": 42,
-  "vina_seed": 12345
+  "vina_seed": 12345,
+  "boltz_max_molecules": 70
 }

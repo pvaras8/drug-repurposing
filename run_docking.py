@@ -69,6 +69,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--run-boltz", action="store_true", help="Run boltz stage")
     parser.add_argument(
+        "--boltz-max-molecules",
+        type=int,
+        default=None,
+        help="Maximum number of top Vina molecules sent to Boltz (default: 70)",
+    )
+    parser.add_argument(
         "--boltz-conda-env",
         default="",
         help="Conda env name where Boltz should run (e.g., boltz2)",
@@ -186,8 +192,13 @@ def main() -> None:
     vina_save_every = int(vina_cfg.get("save_every", 25))
     boltz_conda_env = str(vina_cfg.get("boltz_conda_env", "")).strip()
     boltz_python_executable = str(vina_cfg.get("boltz_python_executable", "")).strip()
+    boltz_max_molecules = int(vina_cfg.get("boltz_max_molecules", 70))
 
     # CLI arguments override config when provided.
+    if args.boltz_max_molecules is not None:
+        boltz_max_molecules = args.boltz_max_molecules
+    if boltz_max_molecules <= 0:
+        raise ValueError("--boltz-max-molecules must be greater than zero")
     if args.boltz_conda_env.strip():
         boltz_conda_env = args.boltz_conda_env.strip()
     if args.boltz_python_executable.strip():
@@ -241,6 +252,7 @@ def main() -> None:
         vina_seed=vina_seed,
         vina_save_every=vina_save_every,
         run_boltz=args.run_boltz,
+        boltz_max_molecules=boltz_max_molecules,
         boltz_conda_env=(boltz_conda_env or None),
         boltz_python_executable=(boltz_python_executable or None),
     )
