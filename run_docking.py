@@ -21,6 +21,7 @@ from repurposing_pipeline.wrappers.meeko_wrapper import (
     receptor_seems_protonated,
     validate_box,
 )
+from repurposing_pipeline.wrappers.svr_affinity_wrapper import validate_affinity_cfg
 
 
 def _load_vina_config(path: Path) -> dict[str, object]:
@@ -193,6 +194,9 @@ def main() -> None:
     boltz_conda_env = str(vina_cfg.get("boltz_conda_env", "")).strip()
     boltz_python_executable = str(vina_cfg.get("boltz_python_executable", "")).strip()
     boltz_max_molecules = int(vina_cfg.get("boltz_max_molecules", 70))
+    affinity_cfg: dict = dict(vina_cfg.get("affinity", {"enabled": False}))
+    affinity_cfg.setdefault("enabled", False)
+    validate_affinity_cfg(affinity_cfg)
 
     # CLI arguments override config when provided.
     if args.boltz_max_molecules is not None:
@@ -255,6 +259,7 @@ def main() -> None:
         boltz_max_molecules=boltz_max_molecules,
         boltz_conda_env=(boltz_conda_env or None),
         boltz_python_executable=(boltz_python_executable or None),
+        affinity_cfg=affinity_cfg,
     )
 
     print(f"Docking setup: {setup_json}")

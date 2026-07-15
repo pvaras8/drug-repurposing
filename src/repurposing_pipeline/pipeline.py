@@ -19,6 +19,7 @@ from repurposing_pipeline.ligand_prep import prepare_ligands
 from repurposing_pipeline.ranking import apply_ranking
 from repurposing_pipeline.wrappers.affinity_template_wrapper import build_affinity_template_from_pdb
 from repurposing_pipeline.wrappers.boltz_wrapper import run_boltz_with_existing_wrapper
+from repurposing_pipeline.wrappers.svr_affinity_wrapper import run_svr_affinity, validate_affinity_cfg
 from repurposing_pipeline.wrappers.vina_wrapper import run_vina_parallel
 
 
@@ -187,6 +188,7 @@ def run_pipeline(
     boltz_max_molecules: int = 70,
     boltz_conda_env: str | None = None,
     boltz_python_executable: str | None = None,
+    affinity_cfg: dict[str, Any] | None = None,
 ) -> Path:
     """Execute the repurposing pipeline and write final_results.csv."""
     run_paths = ensure_run_paths(runs_root, run_id)
@@ -260,6 +262,23 @@ def run_pipeline(
         logger.info("Skipping Vina docking: receptor not provided")
     elif run_vina and docking_setup is None:
         logger.info("Skipping Vina docking: docking setup metadata missing")
+
+    if affinity_cfg and affinity_cfg.get("enabled"):
+        protein_pdb = str((docking_setup or {}).get("receptor_pdb", "") or "")
+        logger.info("Running SVR affinity prediction")
+        svr_scores = run_svr_affinity(
+            vina_by_id=vina_by_id,
+            affinity=affinity_cfg,
+            output_dir=run_paths.output,
+            protein_pdb=protein_pdb,
+        )
+        for mol_id, svr_score in svr_scores.items():
+            if mol_id in vina_by_id:
+                vina_by_id[mol_id]["vina_score"] = svr_score
+                vina_by_id[mol_id]["svr_score"] = svr_score
+                vina_by_id[mol_id]["svr_affinity_status"] = "OK"
+        logger.info("SVR affinity prediction completed for %s molecules", len(svr_scores))
+
     completed_scores_with_id = [
         (molecule_id, float(item.get("vina_score")))
         for molecule_id, item in vina_by_id.items()

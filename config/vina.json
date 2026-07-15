@@ -11,5 +11,22 @@
   "max_mw": 500.0,
   "embed_seed": 42,
   "vina_seed": 12345,
-  "boltz_max_molecules": 70
+  "boltz_max_molecules": 70,
+  "affinity": {
+    "enabled": true,
+    "model": "svr_fp_pose",
+    "conda_env": "pockliggpt_affinity_svr",
+    "activation": "conda_run",
+    "conda_bin": "conda",
+    "project_dir": "/LUSTRE/users/pvaras/Affinity_Prediction_Model",
+    "script": "/LUSTRE/users/pvaras/Affinity_Prediction_Model/predict_affinity.py",
+    "svr_model": "checkpoints/svr_affinity_fp_pose_model.joblib",
+    "svr_meta": "checkpoints/svr_affinity_fp_pose_metadata.json",
+    "score_column": "predicted_affinity_kcal_mol",
+    "selection": "min",
+    "obabel_bin": "obabel",
+    "obabel_conda_env": "pockliggpt_affinity_svr",
+    "fallback_to_vina": true,
+    "protein_pdb": ""
+  }
 }
