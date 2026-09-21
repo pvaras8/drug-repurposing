@@ -38,36 +38,23 @@ def _percentile(sorted_values: list[float], q: float) -> float:
 
 def _select_boltz_candidates(
     completed_scores_with_id: list[tuple[str, float]],
-    max_molecules: int,
+    max_molecules: int | None,
 ) -> tuple[set[str], float | None]:
     """Select the favorable Vina quartile, capped to the best scores."""
-    if max_molecules <= 0:
+    if max_molecules is not None and max_molecules <= 0:
         raise ValueError("max_molecules must be greater than zero")
     if not completed_scores_with_id:
         return set(), None
 
     scores = [score for _, score in completed_scores_with_id]
     sorted_scores = sorted(scores)
-    docking_median = median(scores)
-    lower_is_better = docking_median < 0
-    quartile_threshold = _percentile(sorted_scores, 0.25 if lower_is_better else 0.75)
+    # Vina reports binding energy: a more negative score is always preferable.
+    quartile_threshold = _percentile(sorted_scores, 0.25)
+    favorable = [(molecule_id, score) for molecule_id, score in completed_scores_with_id
+                 if score <= quartile_threshold]
+    favorable.sort(key=lambda item: (item[1], item[0]))
 
-    if lower_is_better:
-        favorable = [
-            (molecule_id, score)
-            for molecule_id, score in completed_scores_with_id
-            if score <= quartile_threshold
-        ]
-        favorable.sort(key=lambda item: (item[1], item[0]))
-    else:
-        favorable = [
-            (molecule_id, score)
-            for molecule_id, score in completed_scores_with_id
-            if score >= quartile_threshold
-        ]
-        favorable.sort(key=lambda item: (-item[1], item[0]))
-
-    return {molecule_id for molecule_id, _ in favorable[:max_molecules]}, quartile_threshold
+    return {molecule_id for molecule_id, _ in (favorable[:max_molecules] if max_molecules is not None else favorable)}, quartile_threshold
 
 
 def _build_run_logger(logs_dir: Path) -> logging.Logger:
@@ -185,12 +172,17 @@ def run_pipeline(
     vina_seed: int = 12345,
     vina_save_every: int = 25,
     run_boltz: bool = False,
-    boltz_max_molecules: int = 70,
+    boltz_max_molecules: int | None = 70,
+    targets: list[dict[str, Any]] | None = None,
     boltz_conda_env: str | None = None,
     boltz_python_executable: str | None = None,
     affinity_cfg: dict[str, Any] | None = None,
 ) -> Path:
     """Execute the repurposing pipeline and write final_results.csv."""
+    if targets:
+        if not run_vina:
+            raise ValueError("Multi-target protocol requires Vina docking")
+        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_conda_env, boltz_python_executable, dict(vina_num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
     run_paths = ensure_run_paths(runs_root, run_id)
     logger = _build_run_logger(run_paths.logs)
     logger.info("Starting run_id=%s input_csv=%s", run_id, input_csv)
@@ -326,7 +318,7 @@ def run_pipeline(
             receptor_source = receptor_path
 
         if receptor_source is not None:
-            boltz_template_path = Path(__file__).resolve().parents[2] / "examples" / "affinity.yaml"
+            boltz_template_path = run_paths.root / "affinity_single.yaml"
             summary = build_affinity_template_from_pdb(
                 pdb_path=receptor_source,
                 output_yaml=boltz_template_path,
@@ -445,7 +437,7 @@ def run_pipeline(
                 "boltz_status": "filtered_out_by_vina",
                 "error": "Filtered out by Vina quartile and top-score limit",
             }
-        elif molecule_id in boltz_by_id:
+        elif molecule_id in boltz_by_id and not (run_boltz and boltz_by_id[molecule_id].get("boltz_status") == "skipped"):
             boltz_result = boltz_by_id[molecule_id]
         else:
             boltz_result = run_boltz_with_existing_wrapper(
@@ -468,6 +460,9 @@ def run_pipeline(
         if merged.get("boltz_status") == "filtered_out_by_vina":
             merged["status"] = "filtered"
             merged["error"] = "Did not pass Vina quartile and top-score limit for Boltz"
+        if merged.get("boltz_status") == "completed" and apply_ranking([merged])[0]["final_score"] is None:
+            merged["status"] = "filtered"
+            merged["error"] = "Boltz affinity or binder probability failed protocol threshold"
         if merged.get("boltz_status") == "failed":
             merged["status"] = "failed"
             merged["error"] = merged.get("error", "Boltz stage failed")
@@ -475,15 +470,130 @@ def run_pipeline(
 
     save_checkpoint(run_paths.checkpoints, "boltz", {"by_molecule": boltz_by_id})
 
-    ranked = apply_ranking(results, method="separate")
+    ranked = apply_ranking(results)
     final_csv = write_final_results(ranked, run_paths.output / "final_results.csv")
-
-    multiplicative_csv = _write_multiplicative_ranking_csv(
-        results=ranked,
-        output_path=run_paths.output / "final_multiplicative_ranked.csv",
-    )
-    if multiplicative_csv is not None:
-        print("Multiplicative ranking CSV:", multiplicative_csv)
 
     logger.info("Run completed output_csv=%s receptor=%s", final_csv, receptor_path)
     return final_csv
+
+
+def _run_multitarget(
+    input_csv: Path, runs_root: Path, run_id: str, targets: list[dict[str, Any]],
+    run_boltz: bool, boltz_max_molecules: int | None, boltz_conda_env: str | None,
+    boltz_python_executable: str | None, vina_options: dict[str, Any],
+) -> Path:
+    """Dock every target, intersect favorable quartiles, then predict each pair."""
+    if len(targets) != 2:
+        raise ValueError("Multi-target mode requires exactly two targets")
+    if boltz_max_molecules is not None and boltz_max_molecules <= 0:
+        raise ValueError("boltz_max_molecules must be positive")
+    names = [str(target["name"]) for target in targets]
+    if len(set(names)) != 2 or any(not name.isidentifier() for name in names):
+        raise ValueError("Target names must be distinct identifiers")
+    paths = ensure_run_paths(runs_root, run_id)
+    rows = read_input_csv(input_csv)
+    prep = load_checkpoint(paths.checkpoints, "ligand_prep")
+    prepared = prep.get("rows") if prep else None
+    if prepared is None:
+        prepared = prepare_ligands(rows, paths.prepared)
+        save_checkpoint(paths.checkpoints, "ligand_prep", {"rows": prepared})
+    docked: dict[str, dict[str, Any]] = {}
+    selected: list[set[str]] = []
+    for target in targets:
+        name = str(target["name"])
+        receptor = Path(str(target["receptor_pdbqt"])).resolve()
+        if not receptor.is_file():
+            raise FileNotFoundError(receptor)
+        checkpoint_name = f"vina_{name}"
+        checkpoint = load_checkpoint(paths.checkpoints, checkpoint_name)
+        by_id = checkpoint.get("by_molecule", {})
+        pending = [row for row in prepared if row.get("ligand_prep_status") == "completed" and row["molecule_id"] not in by_id]
+        if pending:
+            by_id.update(run_vina_parallel(
+                rows=pending, receptor_pdbqt=receptor,
+                center=tuple(float(x) for x in target["box_center"]),
+                box_size=tuple(float(x) for x in target["box_size"]),
+                vina_results_dir=paths.vina_results / name,
+                progress_csv_path=paths.output / f"vina_{name}_partial.csv",
+                **vina_options,
+            ))
+            save_checkpoint(paths.checkpoints, checkpoint_name, {"by_molecule": by_id})
+        docked[name] = by_id
+        scores = [(mol_id, float(item["vina_score"])) for mol_id, item in by_id.items()
+                  if item.get("docking_status") == "completed" and item.get("vina_score") is not None]
+        chosen, threshold = _select_boltz_candidates(scores, None)
+        selected.append(chosen)
+    intersection = set.intersection(*selected)
+    # Apply the 70-molecule limit only after both docking quartiles intersect.
+    # Mean rank treats both targets equally even if their energy scales differ.
+    ranks: dict[str, dict[str, int]] = {}
+    for name in names:
+        ordered = sorted(
+            ((mol_id, float(item["vina_score"])) for mol_id, item in docked[name].items()
+             if item.get("docking_status") == "completed" and item.get("vina_score") is not None),
+            key=lambda pair: (pair[1], pair[0]),
+        )
+        ranks[name] = {mol_id: position for position, (mol_id, _) in enumerate(ordered, 1)}
+    ordered_intersection = sorted(
+        intersection, key=lambda mol_id: (sum(ranks[name][mol_id] for name in names), mol_id)
+    )
+    eligible = set(ordered_intersection[:boltz_max_molecules]) if boltz_max_molecules is not None else intersection
+    for name in names:
+        scores = [float(item["vina_score"]) for item in docked[name].values()
+                  if item.get("docking_status") == "completed" and item.get("vina_score") is not None]
+        threshold = _percentile(sorted(scores), 0.25) if scores else None
+        with (paths.output / f"vina_{name}.csv").open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["molecule_id", "vina_score", "docking_status", "quartile_threshold", "pass_quartile", "pass_to_boltz"])
+            writer.writeheader()
+            for row in prepared:
+                mol_id = row["molecule_id"]
+                item = docked[name].get(mol_id, {})
+                writer.writerow({"molecule_id": mol_id, "vina_score": item.get("vina_score", ""),
+                                 "docking_status": item.get("docking_status", "missing"),
+                                 "quartile_threshold": threshold, "pass_quartile": mol_id in selected[names.index(name)],
+                                 "pass_to_boltz": mol_id in eligible})
+    templates: dict[str, Path] = {}
+    if run_boltz and eligible:
+        for target in targets:
+            name = str(target["name"])
+            source = Path(str(target.get("receptor_pdb") or target["receptor_pdbqt"])).resolve()
+            template = paths.root / f"affinity_{name}.yaml"
+            build_affinity_template_from_pdb(source, template, tuple(float(x) for x in target["box_center"]), radius=8.0, chain_id="A")
+            templates[name] = template
+    boltz_checkpoint = load_checkpoint(paths.checkpoints, "boltz_multi")
+    boltz_by_pair = boltz_checkpoint.get("by_pair", {})
+    results = []
+    for row in prepared:
+        mol_id = row["molecule_id"]
+        result: dict[str, Any] = {"molecule_id": mol_id, "smiles": row["smiles"], "ligand_prep_status": row.get("ligand_prep_status"), "status": "completed", "error": "", "pass_to_boltz": mol_id in eligible}
+        for name in names:
+            item = docked[name].get(mol_id, {})
+            result[f"{name}_docking_status"] = item.get("docking_status", "missing")
+            result[f"{name}_vina_score"] = item.get("vina_score")
+        if row.get("ligand_prep_status") != "completed":
+            result.update(status="failed", error=row.get("ligand_prep_error", "Ligand preparation failed"))
+        elif mol_id not in eligible:
+            reason = ("Docking score outside favorable quartile for at least one target"
+                      if mol_id not in intersection else "Outside top 70 of docking-quartile intersection")
+            result.update(status="filtered", error=reason)
+        else:
+            for name in names:
+                pair_key = f"{name}:{mol_id}"
+                if pair_key not in boltz_by_pair or (run_boltz and boltz_by_pair[pair_key].get("boltz_status") == "skipped"):
+                    boltz_by_pair[pair_key] = run_boltz_with_existing_wrapper(
+                        repo_root=Path(__file__).resolve().parents[2], molecule_id=mol_id,
+                        smiles=row["smiles"], run_boltz=run_boltz,
+                        logs_dir=paths.logs / name, boltz_results_dir=paths.boltz_results / name,
+                        template_path=templates.get(name), boltz_conda_env=boltz_conda_env,
+                        boltz_python_executable=boltz_python_executable,
+                    )
+                    save_checkpoint(paths.checkpoints, "boltz_multi", {"by_pair": boltz_by_pair})
+                result.update({f"{name}_{key}": value for key, value in boltz_by_pair[pair_key].items()})
+            if run_boltz and any(result.get(f"{name}_boltz_status") == "failed" for name in names):
+                result.update(status="failed", error="Boltz failed for at least one target")
+        results.append(result)
+    ranked = apply_ranking(results, names)
+    for result in ranked:
+        if run_boltz and result["pass_to_boltz"] and result["status"] == "completed" and result["final_score"] is None:
+            result.update(status="filtered", error="Boltz affinity or binder probability failed for at least one target")
+    return write_final_results(ranked, paths.output / "final_results.csv")

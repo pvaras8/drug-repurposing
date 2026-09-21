@@ -109,3 +109,18 @@ In addition if you use the automatic MSA generation, please cite:
   year={2022},
 }
 ```
+
+### Ranking protocol (one or two targets)
+
+The final `output/final_results.csv` contains only ranked molecules that pass the protocol; filtered and failed molecules remain in the same file with an empty `final_rank`. Vina's favorable quartile is computed independently for each target (lower Vina energies are better). For two targets a molecule must pass both quartiles before Boltz runs once per target. A Boltz result passes when affinity prediction `A < 0` and binder probability `B >= 0.45`. The score per target is `S = B * (6 - A)`; with two targets `final_score = sqrt(S1 * S2)`. Higher scores rank first. For an ideal probability gate of 0.50, filter the CSV by the probability columns.
+
+For two targets, create a JSON file like this and pass it with `--targets-json targets.json --run-boltz`:
+
+```json
+[
+  {"name": "target_a", "receptor_pdbqt": "/path/to/a.pdbqt", "receptor_pdb": "/path/to/a.pdb", "box_center": [0, 0, 0], "box_size": [20, 20, 20]},
+  {"name": "target_b", "receptor_pdbqt": "/path/to/b.pdbqt", "receptor_pdb": "/path/to/b.pdb", "box_center": [1, 2, 3], "box_size": [20, 20, 20]}
+]
+```
+
+For one target, use the existing `--receptor-ready-pdbqt`, `--receptor-pdb`, `--pocket-center`, and `--pocket-size` options. The pipeline sends at most 70 molecules to Boltz by default. For two targets it first intersects the two favorable quartiles, then selects up to 70 from that intersection using the sum of their docking ranks across both targets. `--boltz-max-molecules` changes this limit.

@@ -1,0 +1,133 @@
+[RDKit] ERROR:[17:55:06] UFFTYPER: Unrecognized charge state for atom: 1
+[RDKit] ERROR:[17:55:06] UFFTYPER: Unrecognized charge state for atom: 1
+[RDKit] ERROR:[17:55:06] UFFTYPER: Unrecognized charge state for atom: 9
+[RDKit] ERROR:[17:55:06] UFFTYPER: Unrecognized charge state for atom: 3
+[RDKit] ERROR:[18:33:57] UFFTYPER: Unrecognized charge state for atom: 3
+[RDKit] ERROR:[18:34:45] UFFTYPER: Unrecognized charge state for atom: 3
+[RDKit] ERROR:[18:47:48] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] ERROR:[18:47:48] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] ERROR:[18:47:51] UFFTYPER: Unrecognized charge state for atom: 15
+[RDKit] ERROR:[18:47:52] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] ERROR:[18:51:20] UFFTYPER: Unrecognized atom type: As2+3 (1)
+[RDKit] ERROR:[18:51:20] UFFTYPER: Unrecognized atom type: As2+3 (3)
+[RDKit] ERROR:[18:51:20] UFFTYPER: Unrecognized atom type: As2+3 (1)
+[RDKit] ERROR:[18:51:20] UFFTYPER: Unrecognized atom type: As2+3 (3)
+[RDKit] ERROR:[19:10:37] UFFTYPER: Unrecognized charge state for atom: 6
+[RDKit] ERROR:[19:15:52] UFFTYPER: Unrecognized charge state for atom: 3
+[RDKit] ERROR:[19:15:52] UFFTYPER: Unrecognized charge state for atom: 3
+[RDKit] ERROR:[19:15:53] UFFTYPER: Unrecognized charge state for atom: 5
+[RDKit] ERROR:[19:15:54] UFFTYPER: Unrecognized charge state for atom: 5
+[RDKit] ERROR:[19:17:08] UFFTYPER: Unrecognized charge state for atom: 2
+[RDKit] ERROR:[19:17:08] UFFTYPER: Unrecognized charge state for atom: 2
+[RDKit] ERROR:[19:24:26] UFFTYPER: Unrecognized charge state for atom: 25
+[RDKit] ERROR:[19:24:30] UFFTYPER: Unrecognized charge state for atom: 25
+[RDKit] ERROR:[19:24:31] UFFTYPER: Unrecognized charge state for atom: 25
+[RDKit] ERROR:[19:24:31] UFFTYPER: Unrecognized charge state for atom: 25
+[RDKit] ERROR:[19:25:21] UFFTYPER: Unrecognized charge state for atom: 6
+[RDKit] ERROR:[19:26:00] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] ERROR:[19:26:00] UFFTYPER: Unrecognized charge state for atom: 5
+[RDKit] ERROR:[19:26:00] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] WARNING:[19:27:31] UFFTYPER: Warning: hybridization set to SP3 for atom 1
+[RDKit] WARNING:[19:27:31] UFFTYPER: Warning: hybridization set to SP3 for atom 8
+[RDKit] WARNING:[19:27:31] UFFTYPER: Warning: hybridization set to SP3 for atom 1
+[RDKit] WARNING:[19:27:31] UFFTYPER: Warning: hybridization set to SP3 for atom 8
+[RDKit] ERROR:[19:31:13] UFFTYPER: Unrecognized atom type: S_6+6 (1)
+[RDKit] ERROR:[19:31:13] UFFTYPER: Unrecognized atom type: S_6+6 (1)
+[RDKit] ERROR:[19:31:25] UFFTYPER: Unrecognized charge state for atom: 1
+[RDKit] ERROR:[19:31:25] UFFTYPER: Unrecognized charge state for atom: 1
+[RDKit] ERROR:[19:31:25] UFFTYPER: Unrecognized charge state for atom: 1
+[RDKit] ERROR:[19:31:25] UFFTYPER: Unrecognized charge state for atom: 1
+[RDKit] WARNING:[19:31:26] UFFTYPER: Warning: hybridization set to SP3 for atom 1
+[RDKit] WARNING:[19:31:26] UFFTYPER: Warning: hybridization set to SP3 for atom 1
+[RDKit] ERROR:[19:31:40] UFFTYPER: Unrecognized charge state for atom: 14
+[RDKit] ERROR:[19:31:47] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] ERROR:[19:31:47] UFFTYPER: Unrecognized charge state for atom: 5
+[RDKit] ERROR:[19:31:47] UFFTYPER: Unrecognized charge state for atom: 13
+[RDKit] ERROR:[19:31:54] UFFTYPER: Unrecognized charge state for atom: 3
+[RDKit] ERROR:[19:44:22] UFFTYPER: Unrecognized charge state for atom: 7
+[RDKit] ERROR:[19:44:22] UFFTYPER: Unrecognized charge state for atom: 7
+[RDKit] ERROR:[19:44:22] UFFTYPER: Unrecognized charge state for atom: 7
+[RDKit] ERROR:[19:44:22] UFFTYPER: Unrecognized charge state for atom: 7
+[RDKit] ERROR:[19:46:22] UFFTYPER: Unrecognized charge state for atom: 4
+[RDKit] WARNING:[19:50:03] UFFTYPER: Warning: hybridization set to SP3 for atom 1
+[RDKit] WARNING:[19:50:03] UFFTYPER: Warning: hybridization set to SP3 for atom 1
+[RDKit] WARNING:[19:51:19] UFFTYPER: Warning: hybridization set to SP3 for atom 0
+[RDKit] ERROR:[19:51:19] UFFTYPER: Unrecognized charge state for atom: 0
+[RDKit] ERROR:[19:57:14] UFFTYPER: Unrecognized atom type: Zr3 (1)
+[RDKit] ERROR:[19:57:14] UFFTYPER: Unrecognized atom type: Zr3 (1)
+Vina completed. Median docking score: -6.2890
+Selected best Vina molecules for Boltz: 70 (favorable quartile, max 70)
+  - DB11703_05657 (DB11703): vina_score=-9.1610
+  - DB00931_02320 (DB00931): vina_score=-9.1270
+  - DB08867_04587 (DB08867): vina_score=-9.0810
+  - DB11363_05497 (DB11363): vina_score=-9.0540
+  - DB00820 (DB00820): vina_score=-9.0040
+  - DB16236 (DB16236): vina_score=-8.9900
+  - DB15233 (DB15233): vina_score=-8.9830
+  - DB11799_05705 (DB11799): vina_score=-8.9550
+  - DB15133 (DB15133): vina_score=-8.9480
+  - DB11652 (DB11652): vina_score=-8.9370
+  - DB04842_03876 (DB04842): vina_score=-8.8940
+  - DB12523 (DB12523): vina_score=-8.8090
+  - DB01395 (DB01395): vina_score=-8.7150
+  - DB14669_06771 (DB14669): vina_score=-8.7030
+  - DB11652_05619 (DB11652): vina_score=-8.6960
+  - DB15133_06837 (DB15133): vina_score=-8.6920
+  - DB04842 (DB04842): vina_score=-8.6830
+  - DB12480_06099 (DB12480): vina_score=-8.6800
+  - DB01100 (DB01100): vina_score=-8.6720
+  - DB00896_02244 (DB00896): vina_score=-8.6710
+  - DB11652_05620 (DB11652): vina_score=-8.6460
+  - DB04842_03875 (DB04842): vina_score=-8.6440
+  - DB01395_03541 (DB01395): vina_score=-8.6210
+  - DB01106_02708 (DB01106): vina_score=-8.6030
+  - DB15442_06851 (DB15442): vina_score=-8.5940
+  - DB01047 (DB01047): vina_score=-8.5850
+  - DB06210_04118 (DB06210): vina_score=-8.5850
+  - DB15442 (DB15442): vina_score=-8.5820
+  - DB06210_04119 (DB06210): vina_score=-8.5720
+  - DB15031_06828 (DB15031): vina_score=-8.5690
+  - DB00595_01334 (DB00595): vina_score=-8.5570
+  - DB06210 (DB06210): vina_score=-8.5550
+  - DB06144_04044 (DB06144): vina_score=-8.5540
+  - DB12492_06107 (DB12492): vina_score=-8.5520
+  - DB15233_06840 (DB15233): vina_score=-8.5490
+  - DB00618_01441 (DB00618): vina_score=-8.5320
+  - DB06786 (DB06786): vina_score=-8.5280
+  - DB15233_06841 (DB15233): vina_score=-8.5260
+  - DB11760 (DB11760): vina_score=-8.5250
+  - DB06144 (DB06144): vina_score=-8.5090
+  - DB12480_06100 (DB12480): vina_score=-8.5060
+  - DB12492_06111 (DB12492): vina_score=-8.5060
+  - DB00595_01324 (DB00595): vina_score=-8.4840
+  - DB13931 (DB13931): vina_score=-8.4820
+  - DB11799_05704 (DB11799): vina_score=-8.4790
+  - DB00591 (DB00591): vina_score=-8.4780
+  - DB00693_01710 (DB00693): vina_score=-8.4770
+  - DB08881_04604 (DB08881): vina_score=-8.4740
+  - DB14657_06768 (DB14657): vina_score=-8.4620
+  - DB00197_00139 (DB00197): vina_score=-8.4590
+  - DB09319 (DB09319): vina_score=-8.4530
+  - DB09030 (DB09030): vina_score=-8.4510
+  - DB00619_01445 (DB00619): vina_score=-8.4500
+  - DB08882 (DB08882): vina_score=-8.4440
+  - DB09195 (DB09195): vina_score=-8.4400
+  - DB11703 (DB11703): vina_score=-8.4380
+  - DB00896_02243 (DB00896): vina_score=-8.4300
+  - DB00931_02341 (DB00931): vina_score=-8.4260
+  - DB11791 (DB11791): vina_score=-8.4260
+  - DB00590_01312 (DB00590): vina_score=-8.4200
+  - DB00734_01807 (DB00734): vina_score=-8.4200
+  - DB01501 (DB01501): vina_score=-8.4170
+  - DB00354_00782 (DB00354): vina_score=-8.4120
+  - DB11799 (DB11799): vina_score=-8.4010
+  - DB15442_06852 (DB15442): vina_score=-8.4010
+  - DB09074 (DB09074): vina_score=-8.3900
+  - DB15442_06853 (DB15442): vina_score=-8.3900
+  - DB00210 (DB00210): vina_score=-8.3800
+  - DB15305_06845 (DB15305): vina_score=-8.3800
+  - DB00595_01330 (DB00595): vina_score=-8.3740
+Boltz template overwritten: /LUSTRE/users/pvaras/drug-repurposing/examples/affinity.yaml (source=tog_mgltools.pdbqt, contacts=17, seq_len=1072)
+Multiplicative ranking CSV: /LUSTRE/users/pvaras/drug-repurposing/runs/tog_batch_pocket_2_20260520/output/final_multiplicative_ranked.csv
+Docking setup: /LUSTRE/users/pvaras/drug-repurposing/runs/tog_batch_pocket_2_20260520/output/docking_setup.json
+Pipeline finished. Results: /LUSTRE/users/pvaras/drug-repurposing/runs/tog_batch_pocket_2_20260520/output/final_results.csv

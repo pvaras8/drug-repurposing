@@ -43,8 +43,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--receptor-ready-pdbqt",
-        required=True,
-        help="Prepared receptor PDBQT path (required)",
+        default="",
+        help="Prepared receptor PDBQT path (required for one target)",
     )
     parser.add_argument(
         "--receptor-pdb",
@@ -69,11 +69,12 @@ def _parse_args() -> argparse.Namespace:
         help="Vina JSON config path",
     )
     parser.add_argument("--run-boltz", action="store_true", help="Run boltz stage")
+    parser.add_argument("--targets-json", default="", help="JSON file containing exactly two targets (name, receptor_pdbqt, optional receptor_pdb, box_center, box_size)")
     parser.add_argument(
         "--boltz-max-molecules",
         type=int,
         default=None,
-        help="Maximum number of top Vina molecules sent to Boltz (default: 70)",
+        help="Maximum molecules sent to Boltz after quartile selection (default: 70)",
     )
     parser.add_argument(
         "--boltz-conda-env",
@@ -143,14 +144,29 @@ def main() -> None:
     args = _parse_args()
 
     input_csv = Path(args.input_csv).resolve()
-    receptor_path = Path(args.receptor_ready_pdbqt).resolve()
+    receptor_path = Path(args.receptor_ready_pdbqt).resolve() if args.receptor_ready_pdbqt else None
     receptor_pdb_path = Path(args.receptor_pdb).resolve() if args.receptor_pdb else None
     runs_root = Path(args.runs_root).resolve()
     vina_config_path = Path(args.vina_config).resolve()
 
     if not input_csv.exists():
         raise FileNotFoundError(f"Input CSV not found: {input_csv}")
-    if not receptor_path.exists():
+    targets = None
+    if args.targets_json:
+        targets = json.loads(Path(args.targets_json).read_text(encoding="utf-8"))
+        if not isinstance(targets, list) or len(targets) != 2:
+            raise ValueError("--targets-json must contain exactly two target objects")
+    if targets:
+        for target in targets:
+            for key in ("name", "receptor_pdbqt", "box_center", "box_size"):
+                if key not in target:
+                    raise ValueError(f"Target missing {key}")
+            if not Path(target["receptor_pdbqt"]).is_file():
+                raise FileNotFoundError(target["receptor_pdbqt"])
+            if target.get("receptor_pdb") and not Path(target["receptor_pdb"]).is_file():
+                raise FileNotFoundError(target["receptor_pdb"])
+            validate_box(tuple(target["box_center"]), tuple(target["box_size"]))
+    if not targets and (receptor_path is None or not receptor_path.exists()):
         raise FileNotFoundError(f"Receptor PDBQT not found: {receptor_path}")
     if receptor_pdb_path is not None and not receptor_pdb_path.exists():
         raise FileNotFoundError(f"Receptor PDB not found: {receptor_pdb_path}")
@@ -159,7 +175,7 @@ def main() -> None:
     box_size = parse_triplet(args.pocket_size)
     validate_box(center, box_size)
 
-    protonated, atom_count, hydrogen_count, hydrogen_ratio = receptor_seems_protonated(receptor_path)
+    protonated, atom_count, hydrogen_count, hydrogen_ratio = receptor_seems_protonated(receptor_path) if not targets else (True, 0, 0, 0.0)
     if not protonated:
         print(
             "WARNING: receptor seems weakly protonated "
@@ -193,7 +209,9 @@ def main() -> None:
     vina_save_every = int(vina_cfg.get("save_every", 25))
     boltz_conda_env = str(vina_cfg.get("boltz_conda_env", "")).strip()
     boltz_python_executable = str(vina_cfg.get("boltz_python_executable", "")).strip()
-    boltz_max_molecules = int(vina_cfg.get("boltz_max_molecules", 70))
+    boltz_max_molecules = vina_cfg.get("boltz_max_molecules", 70)
+    if boltz_max_molecules is not None:
+        boltz_max_molecules = int(boltz_max_molecules)
     affinity_cfg: dict = dict(vina_cfg.get("affinity", {"enabled": False}))
     affinity_cfg.setdefault("enabled", False)
     validate_affinity_cfg(affinity_cfg)
@@ -201,7 +219,7 @@ def main() -> None:
     # CLI arguments override config when provided.
     if args.boltz_max_molecules is not None:
         boltz_max_molecules = args.boltz_max_molecules
-    if boltz_max_molecules <= 0:
+    if boltz_max_molecules is not None and boltz_max_molecules <= 0:
         raise ValueError("--boltz-max-molecules must be greater than zero")
     if args.boltz_conda_env.strip():
         boltz_conda_env = args.boltz_conda_env.strip()
@@ -233,6 +251,8 @@ def main() -> None:
     }
 
     setup_json = run_paths.output / "docking_setup.json"
+    if targets:
+        docking_setup = {"targets": targets}
     setup_json.write_text(json.dumps(docking_setup, indent=2), encoding="utf-8")
 
     final_csv = run_pipeline(
@@ -260,6 +280,7 @@ def main() -> None:
         boltz_conda_env=(boltz_conda_env or None),
         boltz_python_executable=(boltz_python_executable or None),
         affinity_cfg=affinity_cfg,
+        targets=targets,
     )
 
     print(f"Docking setup: {setup_json}")

@@ -28,6 +28,7 @@ def run_boltz_with_existing_wrapper(
     This adapter runs boltz.py per molecule through environment variables and
     parses returned metrics into pipeline-normalized fields.
     """
+    logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = logs_dir / f"{molecule_id}.log"
     molecule_out_dir = boltz_results_dir / molecule_id
     molecule_out_dir.mkdir(parents=True, exist_ok=True)

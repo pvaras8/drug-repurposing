@@ -1,3 +1,11 @@
 python run_docking.py --input-csv=input_csvs/1a2g_smiles.csv --receptor-ready-pdbqt=pdbs/1A2G_receptor_prepared.pdbqt --pocket-center="-5.4,56.13,112.23" --pocket-size="20,20,20" --run-id=1a2g_batch_pocket_1_20260520 --no-prompt --allow-non-protonated-receptor
 
 nohup python run_docking.py --input-csv input_csvs/drugbank_smiles_con_id.csv --receptor-ready-pdbqt pdbs/tog_mgltools.pdbqt --pocket-center=125.21,108.05,115.37 --pocket-size=20,20,20 --run-id=tog_batch_pocket_2_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+python run_docking.py --input-csv input_csvs/TargetDiff_4qlk.csv --receptor-ready-pdbqt pdbs/4qlk_A_rec.pdbqt --pocket-center=3.08,0.72,43.00 --pocket-size=20,20,20 --run-id=TargetDiff_4qlk --no-prompt --allow-non-protonated-receptor
+
+nohup python run_docking.py --input-csv input_csvs/drugbank_smiles_con_id.csv --receptor-ready-pdbqt pdbs/6eif_receptor_prepared.pdbqt --pocket-center=7.80,17.01,-47.09 --pocket-size=20,20,20 --run-id=dyrk1a_repurposing_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/bace_pool_final_nontoxic-5.csv --receptor-ready-pdbqt pdbs/5tol_receptor_prepared.pdbqt --pocket-center=-26.26,51.32,21.93 --pocket-size=20,20,20 --run-id=bace_batch_4_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/tu_pool_combinado.csv --targets-json targets.json --run-id=dyrk1a_bace_multitarget --run-boltz --boltz-conda-env boltz2 --no-prompt &
