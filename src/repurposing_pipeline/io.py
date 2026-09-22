@@ -124,6 +124,9 @@ def write_final_results(results: list[dict[str, Any]], output_path: Path) -> Pat
             "error",
             "boltz_affinity_pred_value",
             "boltz_affinity_probability_binary",
+            "pIC50",
+            "boltz_score",
+            "final_score",
             "boltz_rank",
             "final_rank",
         ]
