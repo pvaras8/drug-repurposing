@@ -8,4 +8,4 @@ nohup python run_docking.py --input-csv input_csvs/drugbank_smiles_con_id.csv --
 
 nohup python run_docking.py --input-csv input_csvs/bace_pool_final_nontoxic-5.csv --receptor-ready-pdbqt pdbs/5tol_receptor_prepared.pdbqt --pocket-center=-26.26,51.32,21.93 --pocket-size=20,20,20 --run-id=bace_batch_4_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
 
-nohup python run_docking.py --input-csv input_csvs/tu_pool_combinado.csv --targets-json targets.json --run-id=dyrk1a_bace_multitarget --run-boltz --boltz-conda-env boltz2 --no-prompt &
+nohup python run_docking.py --input-csv input_csvs/dyrk1a_buche.csv --targets-json targets.json --run-id=dyrk1a_buche_multitarget --run-boltz --boltz-conda-env boltz2 --no-prompt &

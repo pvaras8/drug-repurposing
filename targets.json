@@ -5,10 +5,13 @@
     "box_center": [7.80, 17.01, -47.09],
     "box_size": [20, 20, 20]
   },
+
   {
-    "name": "bace",
-    "receptor_pdbqt": "pdbs/5tol_receptor_prepared.pdbqt",
-    "box_center": [-26.26, 51.32, 21.93],
+    "name": "buche",
+    "receptor_pdbqt": "pdbs/7q1p_receptor_prepared.pdbqt",
+    "box_center": [18.44, 42.10, 43.10],
     "box_size": [20, 20, 20]
   }
 ]
+
+

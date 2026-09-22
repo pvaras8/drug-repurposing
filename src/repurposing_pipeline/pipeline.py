@@ -182,7 +182,7 @@ def run_pipeline(
     if targets:
         if not run_vina:
             raise ValueError("Multi-target protocol requires Vina docking")
-        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_conda_env, boltz_python_executable, dict(vina_num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
+        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_conda_env, boltz_python_executable, dict(num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
     run_paths = ensure_run_paths(runs_root, run_id)
     logger = _build_run_logger(run_paths.logs)
     logger.info("Starting run_id=%s input_csv=%s", run_id, input_csv)
