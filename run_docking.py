@@ -74,7 +74,13 @@ def _parse_args() -> argparse.Namespace:
         "--boltz-max-molecules",
         type=int,
         default=None,
-        help="Maximum molecules sent to Boltz after quartile selection (default: 70)",
+        help="Maximum molecules sent to Boltz after Vina selection (configurable; null means no limit)",
+    )
+    parser.add_argument(
+        "--boltz-vina-quantile",
+        type=float,
+        default=None,
+        help="Fraction of best Vina results sent to Boltz (0 < q <= 1; 1 sends all)",
     )
     parser.add_argument(
         "--boltz-conda-env",
@@ -212,6 +218,7 @@ def main() -> None:
     boltz_max_molecules = vina_cfg.get("boltz_max_molecules", 70)
     if boltz_max_molecules is not None:
         boltz_max_molecules = int(boltz_max_molecules)
+    boltz_vina_quantile = float(vina_cfg.get("boltz_vina_quantile", 0.25))
     affinity_cfg: dict = dict(vina_cfg.get("affinity", {"enabled": False}))
     affinity_cfg.setdefault("enabled", False)
     validate_affinity_cfg(affinity_cfg)
@@ -219,8 +226,12 @@ def main() -> None:
     # CLI arguments override config when provided.
     if args.boltz_max_molecules is not None:
         boltz_max_molecules = args.boltz_max_molecules
+    if args.boltz_vina_quantile is not None:
+        boltz_vina_quantile = args.boltz_vina_quantile
     if boltz_max_molecules is not None and boltz_max_molecules <= 0:
         raise ValueError("--boltz-max-molecules must be greater than zero")
+    if not 0.0 < boltz_vina_quantile <= 1.0:
+        raise ValueError("--boltz-vina-quantile must be greater than zero and at most one")
     if args.boltz_conda_env.strip():
         boltz_conda_env = args.boltz_conda_env.strip()
     if args.boltz_python_executable.strip():
@@ -277,6 +288,7 @@ def main() -> None:
         vina_save_every=vina_save_every,
         run_boltz=args.run_boltz,
         boltz_max_molecules=boltz_max_molecules,
+        boltz_vina_quantile=boltz_vina_quantile,
         boltz_conda_env=(boltz_conda_env or None),
         boltz_python_executable=(boltz_python_executable or None),
         affinity_cfg=affinity_cfg,

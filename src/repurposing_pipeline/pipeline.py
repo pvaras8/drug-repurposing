@@ -39,17 +39,20 @@ def _percentile(sorted_values: list[float], q: float) -> float:
 def _select_boltz_candidates(
     completed_scores_with_id: list[tuple[str, float]],
     max_molecules: int | None,
+    quantile: float = 0.25,
 ) -> tuple[set[str], float | None]:
-    """Select the favorable Vina quartile, capped to the best scores."""
+    """Select Vina scores up to ``quantile``, capped to the best scores."""
     if max_molecules is not None and max_molecules <= 0:
         raise ValueError("max_molecules must be greater than zero")
+    if not 0.0 < quantile <= 1.0:
+        raise ValueError("quantile must be greater than zero and at most one")
     if not completed_scores_with_id:
         return set(), None
 
     scores = [score for _, score in completed_scores_with_id]
     sorted_scores = sorted(scores)
     # Vina reports binding energy: a more negative score is always preferable.
-    quartile_threshold = _percentile(sorted_scores, 0.25)
+    quartile_threshold = _percentile(sorted_scores, quantile)
     favorable = [(molecule_id, score) for molecule_id, score in completed_scores_with_id
                  if score <= quartile_threshold]
     favorable.sort(key=lambda item: (item[1], item[0]))
@@ -173,6 +176,7 @@ def run_pipeline(
     vina_save_every: int = 25,
     run_boltz: bool = False,
     boltz_max_molecules: int | None = 70,
+    boltz_vina_quantile: float = 0.25,
     targets: list[dict[str, Any]] | None = None,
     boltz_conda_env: str | None = None,
     boltz_python_executable: str | None = None,
@@ -182,7 +186,7 @@ def run_pipeline(
     if targets:
         if not run_vina:
             raise ValueError("Multi-target protocol requires Vina docking")
-        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_conda_env, boltz_python_executable, dict(num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
+        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_vina_quantile, boltz_conda_env, boltz_python_executable, dict(num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
     run_paths = ensure_run_paths(runs_root, run_id)
     logger = _build_run_logger(run_paths.logs)
     logger.info("Starting run_id=%s input_csv=%s", run_id, input_csv)
@@ -285,13 +289,14 @@ def run_pipeline(
         boltz_selected_ids, quartile_threshold = _select_boltz_candidates(
             completed_scores_with_id,
             max_molecules=boltz_max_molecules,
+            quantile=boltz_vina_quantile,
         )
 
     if boltz_selected_ids is not None and boltz_selected_ids:
         print("Vina completed. Median docking score:", f"{docking_median:.4f}")
         print(
             f"Selected best Vina molecules for Boltz: {len(boltz_selected_ids)} "
-            f"(favorable quartile, max {boltz_max_molecules})"
+            f"(Vina quantile {boltz_vina_quantile:g}, max {boltz_max_molecules})"
         )
         selected_rows = [
             row for row in prepared_rows if row["molecule_id"] in boltz_selected_ids
@@ -365,6 +370,7 @@ def run_pipeline(
                     "last_quartile_threshold": (
                         quartile_threshold if quartile_threshold is not None else ""
                     ),
+                    "boltz_vina_quantile": boltz_vina_quantile,
                     "boltz_selection_limit": boltz_max_molecules,
                 }
             )
@@ -384,6 +390,7 @@ def run_pipeline(
                     "pass_to_boltz",
                     "median_vina_score",
                     "last_quartile_threshold",
+                    "boltz_vina_quantile",
                     "boltz_selection_limit",
                 ],
             )
@@ -435,7 +442,7 @@ def run_pipeline(
         if not pass_to_boltz:
             boltz_result = {
                 "boltz_status": "filtered_out_by_vina",
-                "error": "Filtered out by Vina quartile and top-score limit",
+                "error": "Filtered out by Vina quantile and top-score limit",
             }
         elif molecule_id in boltz_by_id and not (run_boltz and boltz_by_id[molecule_id].get("boltz_status") == "skipped"):
             boltz_result = boltz_by_id[molecule_id]
@@ -459,7 +466,7 @@ def run_pipeline(
             merged["error"] = merged.get("vina_error", "Vina stage failed")
         if merged.get("boltz_status") == "filtered_out_by_vina":
             merged["status"] = "filtered"
-            merged["error"] = "Did not pass Vina quartile and top-score limit for Boltz"
+            merged["error"] = "Did not pass Vina quantile and top-score limit for Boltz"
         if merged.get("boltz_status") == "completed" and apply_ranking([merged])[0]["final_score"] is None:
             merged["status"] = "filtered"
             merged["error"] = "Boltz affinity or binder probability failed protocol threshold"
@@ -479,7 +486,8 @@ def run_pipeline(
 
 def _run_multitarget(
     input_csv: Path, runs_root: Path, run_id: str, targets: list[dict[str, Any]],
-    run_boltz: bool, boltz_max_molecules: int | None, boltz_conda_env: str | None,
+    run_boltz: bool, boltz_max_molecules: int | None, boltz_vina_quantile: float,
+    boltz_conda_env: str | None,
     boltz_python_executable: str | None, vina_options: dict[str, Any],
 ) -> Path:
     """Dock every target, intersect favorable quartiles, then predict each pair."""
@@ -487,6 +495,8 @@ def _run_multitarget(
         raise ValueError("Multi-target mode requires exactly two targets")
     if boltz_max_molecules is not None and boltz_max_molecules <= 0:
         raise ValueError("boltz_max_molecules must be positive")
+    if not 0.0 < boltz_vina_quantile <= 1.0:
+        raise ValueError("boltz_vina_quantile must be greater than zero and at most one")
     names = [str(target["name"]) for target in targets]
     if len(set(names)) != 2 or any(not name.isidentifier() for name in names):
         raise ValueError("Target names must be distinct identifiers")
@@ -521,10 +531,10 @@ def _run_multitarget(
         docked[name] = by_id
         scores = [(mol_id, float(item["vina_score"])) for mol_id, item in by_id.items()
                   if item.get("docking_status") == "completed" and item.get("vina_score") is not None]
-        chosen, threshold = _select_boltz_candidates(scores, None)
+        chosen, threshold = _select_boltz_candidates(scores, None, boltz_vina_quantile)
         selected.append(chosen)
     intersection = set.intersection(*selected)
-    # Apply the 70-molecule limit only after both docking quartiles intersect.
+    # Apply the optional molecule limit only after both Vina selections intersect.
     # Mean rank treats both targets equally even if their energy scales differ.
     ranks: dict[str, dict[str, int]] = {}
     for name in names:
@@ -541,7 +551,7 @@ def _run_multitarget(
     for name in names:
         scores = [float(item["vina_score"]) for item in docked[name].values()
                   if item.get("docking_status") == "completed" and item.get("vina_score") is not None]
-        threshold = _percentile(sorted(scores), 0.25) if scores else None
+        threshold = _percentile(sorted(scores), boltz_vina_quantile) if scores else None
         with (paths.output / f"vina_{name}.csv").open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=["molecule_id", "vina_score", "docking_status", "quartile_threshold", "pass_quartile", "pass_to_boltz"])
             writer.writeheader()
@@ -573,8 +583,8 @@ def _run_multitarget(
         if row.get("ligand_prep_status") != "completed":
             result.update(status="failed", error=row.get("ligand_prep_error", "Ligand preparation failed"))
         elif mol_id not in eligible:
-            reason = ("Docking score outside favorable quartile for at least one target"
-                      if mol_id not in intersection else "Outside top 70 of docking-quartile intersection")
+            reason = ("Docking score outside configured Vina quantile for at least one target"
+                      if mol_id not in intersection else "Outside configured Boltz molecule limit")
             result.update(status="filtered", error=reason)
         else:
             for name in names:
