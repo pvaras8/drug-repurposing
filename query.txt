@@ -11,3 +11,5 @@ nohup python run_docking.py --input-csv input_csvs/buche_pool_final_nontoxic-3.c
 python run_docking.py --input-csv input_csvs/Dyrk1A_BuChe_NIZ_smiles_only.csv --targets-json targets.json --run-id=dyrk1a_buche_nico_multitarget --run-boltz --boltz-conda-env boltz2
 
 nohup python run_docking.py --input-csv input_csvs/dyrk1a_pool_final_nontoxic-2.csv --receptor-ready-pdbqt pdbs/6eif_receptor_prepared.pdbqt --pocket-center=7.80,17.01,-47.09 --pocket-size=20,20,20 --run-id=dyrk1a_batch_2_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/BACE_de_novo_Structures_modified_by_NIZ.csv --receptor-ready-pdbqt pdbs/5tol_receptor_prepared.pdbqt --pocket-center=-26.26,51.32,21.93 --pocket-size=20,20,20 --run-id=bace_batch_nicola_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
