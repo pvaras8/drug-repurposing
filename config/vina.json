@@ -28,6 +28,6 @@
     "fallback_to_vina": true,
     "protein_pdb": ""
   },
-  "boltz_vina_quantile": 1,
+  "boltz_vina_quantile": 0.25,
   "boltz_max_molecules": 70
 }
