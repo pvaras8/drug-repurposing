@@ -1,0 +1,9 @@
+ID,smiles,target,Original molecule,mode,Comment
+NIZ_B_014,CCC1CC(C(N2C=CC(C#N)=N2)=O)CC1NC(C3=CC=C4NC=NC4=C3)=O,BACE,row_00735,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_015,O=C(C1=CC=C2NC=NC2=C1)NC3CC(C(N4C=CC(C#N)=N4)=O)CC3,BACE,row_00735,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_016,O=C(C1=CC=C2NC=NC2=C1)NC3=CC(C(N4C=CC(C#N)=N4)=O)=CO3,BACE,row_00735,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_017,CC/C=C/C1=CNC2=CC(C(NC3=CC=C([C@H]4CNCCO4)C=N3)=O)=CC=C12,BACE,row_01322,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_018,CC/C=C/C1=CN(C)C2=CC(C(NC3=CC=C([C@H]4CNCCO4)C=N3)=O)=CC=C12,BACE,row_01322,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_019,CC/C=C/C1=COC2=CC(C(NC3=CC=C([C@H]4CNCCO4)C=N3)=O)=CC=C12,BACE,row_01322,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_020,CC/C=C/C1=CN(C)C2=NC(C(NC3=CC=C([C@H]4CNCCO4)C=N3)=O)=CC=C12,BACE,row_01322,de novo,Molecule modified by NIZ from BACE 3 de NOVO
+NIZ_B_021,O=C(NC1=CC=C([C@H]2CNCCO2)C=N1)C3=CC=C4C=COC4=C3,BACE,row_01322,de novo,Molecule modified by NIZ from BACE 3 de NOVO

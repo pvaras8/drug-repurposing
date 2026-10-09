@@ -1,0 +1,5 @@
+ID,smiles,target,Original molecule,mode,Comment
+NIZ_BuB_001,O=C(C1=CC2=C(OC1)C=CC=C2)NC3C4=C(C=CC=C4)CC5=C3N=C(OC)C(OC)=N5,BuChe_BACE,"row_00131, row_00010, row_00009, row_00005",de novo multitarget,Molecule modified by NIZ from BuChe BACE de NOVO
+NIZ_BuB_002,O=C1N(C)C2=C(N=C1)C(NC(C3=CC4=C(OC3)C=CC=C4)=O)C5=C(C=CC=C5)C2,BuChe_BACE,"row_00131, row_00010, row_00009, row_00005",de novo multitarget,Molecule modified by NIZ from BuChe BACE de NOVO
+NIZ_BuB_003,O=C(C1=CC2=C(OC1)C=CC=C2)NC3C4=C(C=CC=C4)CC5=C3N(C)C(C=N5)=O,BuChe_BACE,"row_00131, row_00010, row_00009, row_00005",de novo multitarget,Molecule modified by NIZ from BuChe BACE de NOVO
+NIZ_BuB_004,O=C(C1=CC2=C(OC1)C=CC=C2)NC3C4=C(C=CC=C4)CC5=C3C=CN=C5,BuChe_BACE,"row_00131, row_00010, row_00009, row_00005",de novo multitarget,Molecule modified by NIZ from BuChe BACE de NOVO
