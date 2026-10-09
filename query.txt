@@ -16,4 +16,6 @@ nohup python run_docking.py --input-csv input_csvs/BACE_de_novo_Structures_modif
 
 -10.755,-0.732,15.889
 
-nohup python run_docking.py --input-csv input_csvs/ncs1.csv --receptor-ready-pdbqt pdbs/5tol_receptor_prepared.pdbqt --pocket-center=-10.755,-0.732,15.889 --pocket-size=20,20,20 --run-id=ncs1_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+nohup python run_docking.py --input-csv input_csvs/ncs1_h_10.csv --receptor-ready-pdbqt pdbs/5AAN_receptor_prepared.pdbqt --pocket-center=-6.574,-11.344,19.492 --pocket-size=20,20,20 --run-id=ncs1_batch_2_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+python3 scripts/extract_filtered_pdbqts.py /LUSTRE/users/pvaras/drug-repurposing/runs /LUSTRE/users/pvaras/drug-repurposing/pdbqts_filtrados --experiments ncs1_batch_2_pocket_1_20260520
