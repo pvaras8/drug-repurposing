@@ -20,4 +20,10 @@ nohup python run_docking.py --input-csv input_csvs/ncs1_h_10.csv --receptor-read
 
 python3 scripts/extract_filtered_pdbqts.py /LUSTRE/users/pvaras/drug-repurposing/runs /LUSTRE/users/pvaras/drug-repurposing/pdbqts_filtrados --experiments ncs1_batch_2_pocket_1_20260520
 
-nohup python run_docking.py --input-csv input_csvs/buche_de_novo_NIZ_3_molecules_with_ID.csv --receptor-ready-pdbqt pdbs/7q1p_receptor_prepared.pdbqt --pocket-center=18.44,42.10,43.10 --pocket-size=20,20,20 --run-id=buche_nicola_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+nohup python run_docking.py --input-csv input_csvs/buche_de_novo_NIZ_3_molecules_with_ID.csv --receptor-ready-pdbqt pdbs/7q1p_receptor_prepared.pdbqt --pocket-center=18.44,42.10,43.10 --pocket-size=20,20,20 --run-id=buche_nicola_2_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/NIZ_BuChE_BACE.csv --targets-json targets.json --run-id=BACE_buche_nico_multitarget --run-boltz --boltz-conda-env boltz2 &
+
+nohup python run_docking.py --input-csv input_csvs/dyrk1a_pool_final_nontoxic-3.csv --receptor-ready-pdbqt pdbs/6eif_receptor_prepared.pdbqt --pocket-center=7.80,17.01,-47.09 --pocket-size=20,20,20 --run-id=dyrk1a_batch_3_inference --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/buche_pool_final_nontoxic-4.csv --receptor-ready-pdbqt pdbs/7q1p_receptor_prepared.pdbqt --pocket-center=18.44,42.10,43.10 --pocket-size=20,20,20 --run-id=buche_batch_3_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
