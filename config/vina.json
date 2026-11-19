@@ -29,5 +29,8 @@
     "protein_pdb": ""
   },
   "boltz_vina_quantile": 0.25,
+  "boltz_num_gpus": 4,
+  "boltz_gpu_ids": [0, 1, 2, 3],
+  "boltz_min_gpu_memory_mb": 0,
   "boltz_max_molecules": null
 }

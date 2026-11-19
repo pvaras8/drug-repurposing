@@ -27,3 +27,13 @@ nohup python run_docking.py --input-csv input_csvs/NIZ_BuChE_BACE.csv --targets-
 nohup python run_docking.py --input-csv input_csvs/dyrk1a_pool_final_nontoxic-3.csv --receptor-ready-pdbqt pdbs/6eif_receptor_prepared.pdbqt --pocket-center=7.80,17.01,-47.09 --pocket-size=20,20,20 --run-id=dyrk1a_batch_3_inference --run-boltz --boltz-conda-env boltz2 --no-prompt &
 
 nohup python run_docking.py --input-csv input_csvs/buche_pool_final_nontoxic-4.csv --receptor-ready-pdbqt pdbs/7q1p_receptor_prepared.pdbqt --pocket-center=18.44,42.10,43.10 --pocket-size=20,20,20 --run-id=buche_batch_3_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/bace_pool_final_nontoxic-6.csv --receptor-ready-pdbqt pdbs/5tol_receptor_prepared.pdbqt --pocket-center=-26.26,51.32,21.93 --pocket-size=20,20,20 --run-id=bace_batch_6_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/3ch4_chemist-6.csv --receptor-ready-pdbqt pdbs/3CH4_receptor_prepared.pdbqt --pocket-center=9.60,6.17,8.82 --pocket-size=20,20,20 --run-id=3CH4_batch_1_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/4AH6_chemist-5.csv --receptor-ready-pdbqt pdbs/4AH6_receptor_prepared.pdbqt --pocket-center=17.52153806290905,16.46519307167401,74.50394195781394 --pocket-size=20,20,20 --run-id=4AH6_batch_6_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/6PCF_chemist-4.csv --receptor-ready-pdbqt pdbs/6PCF_receptor_prepared.pdbqt --pocket-center=-10.419405803586793,21.4501719992427,7.01663 --pocket-size=20,20,20 --run-id=6PCF_batch_6_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &
+
+nohup python run_docking.py --input-csv input_csvs/8ppr_chemist-7.csv --receptor-ready-pdbqt pdbs/8PPR_receptor_prepared.pdbqt --pocket-center=234.03756720126717,234.43698088473084,323.2507926640927 --pocket-size=20,20,20 --run-id=8PPF_batch_6_pocket_1_20260520 --run-boltz --boltz-conda-env boltz2 --no-prompt &

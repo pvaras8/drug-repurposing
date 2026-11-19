@@ -219,6 +219,16 @@ def main() -> None:
     if boltz_max_molecules is not None:
         boltz_max_molecules = int(boltz_max_molecules)
     boltz_vina_quantile = float(vina_cfg.get("boltz_vina_quantile", 0.25))
+    boltz_num_gpus = max(1, int(vina_cfg.get("boltz_num_gpus", 1)))
+    configured_gpu_ids = vina_cfg.get("boltz_gpu_ids", list(range(boltz_num_gpus)))
+    if not isinstance(configured_gpu_ids, list) or not configured_gpu_ids:
+        raise ValueError("boltz_gpu_ids must be a non-empty JSON list")
+    if len(configured_gpu_ids) < boltz_num_gpus:
+        raise ValueError("boltz_gpu_ids contains fewer devices than boltz_num_gpus")
+    boltz_gpu_ids = [int(gpu_id) for gpu_id in configured_gpu_ids[:boltz_num_gpus]]
+    if len(set(boltz_gpu_ids)) != len(boltz_gpu_ids):
+        raise ValueError("boltz_gpu_ids must not contain duplicates")
+    boltz_min_gpu_memory_mb = max(0, int(vina_cfg.get("boltz_min_gpu_memory_mb", 0)))
     affinity_cfg: dict = dict(vina_cfg.get("affinity", {"enabled": False}))
     affinity_cfg.setdefault("enabled", False)
     validate_affinity_cfg(affinity_cfg)
@@ -292,6 +302,8 @@ def main() -> None:
         boltz_conda_env=(boltz_conda_env or None),
         boltz_python_executable=(boltz_python_executable or None),
         affinity_cfg=affinity_cfg,
+        boltz_gpu_ids=boltz_gpu_ids,
+        boltz_min_gpu_memory_mb=boltz_min_gpu_memory_mb,
         targets=targets,
     )
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import csv
 import logging
 from statistics import median
+import time
 from typing import Any
 
 from repurposing_pipeline.io import (
@@ -18,7 +19,10 @@ from repurposing_pipeline.io import (
 from repurposing_pipeline.ligand_prep import prepare_ligands
 from repurposing_pipeline.ranking import apply_ranking
 from repurposing_pipeline.wrappers.affinity_template_wrapper import build_affinity_template_from_pdb
-from repurposing_pipeline.wrappers.boltz_wrapper import run_boltz_with_existing_wrapper
+from repurposing_pipeline.wrappers.boltz_wrapper import (
+    run_boltz_parallel,
+    run_boltz_with_existing_wrapper,
+)
 from repurposing_pipeline.wrappers.svr_affinity_wrapper import run_svr_affinity, validate_affinity_cfg
 from repurposing_pipeline.wrappers.vina_wrapper import run_vina_parallel
 
@@ -180,13 +184,15 @@ def run_pipeline(
     targets: list[dict[str, Any]] | None = None,
     boltz_conda_env: str | None = None,
     boltz_python_executable: str | None = None,
+    boltz_gpu_ids: list[int] | None = None,
+    boltz_min_gpu_memory_mb: int = 0,
     affinity_cfg: dict[str, Any] | None = None,
 ) -> Path:
     """Execute the repurposing pipeline and write final_results.csv."""
     if targets:
         if not run_vina:
             raise ValueError("Multi-target protocol requires Vina docking")
-        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_vina_quantile, boltz_conda_env, boltz_python_executable, dict(num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
+        return _run_multitarget(input_csv, runs_root, run_id, targets, run_boltz, boltz_max_molecules, boltz_vina_quantile, boltz_conda_env, boltz_python_executable, boltz_gpu_ids or [0], boltz_min_gpu_memory_mb, dict(num_processors=vina_num_processors, vina_cpu_per_job=vina_cpu_per_job, exhaustiveness=vina_exhaustiveness, n_poses=vina_n_poses, write_n_poses=vina_write_n_poses, energy_range=vina_energy_range, fallback_score=vina_fallback_score, timeout_seconds=vina_timeout_seconds, max_mw=vina_max_mw, sf_name=vina_sf_name, embed_seed=vina_embed_seed, vina_seed=vina_seed, save_every=vina_save_every))
     run_paths = ensure_run_paths(runs_root, run_id)
     logger = _build_run_logger(run_paths.logs)
     logger.info("Starting run_id=%s input_csv=%s", run_id, input_csv)
@@ -262,18 +268,25 @@ def run_pipeline(
     if affinity_cfg and affinity_cfg.get("enabled"):
         protein_pdb = str((docking_setup or {}).get("receptor_pdb", "") or "")
         logger.info("Running SVR affinity prediction")
+        svr_started = time.perf_counter()
         svr_scores = run_svr_affinity(
             vina_by_id=vina_by_id,
             affinity=affinity_cfg,
             output_dir=run_paths.output,
             protein_pdb=protein_pdb,
+            num_workers=int(affinity_cfg.get("num_workers", vina_num_processors)),
         )
         for mol_id, svr_score in svr_scores.items():
             if mol_id in vina_by_id:
                 vina_by_id[mol_id]["vina_score"] = svr_score
                 vina_by_id[mol_id]["svr_score"] = svr_score
                 vina_by_id[mol_id]["svr_affinity_status"] = "OK"
-        logger.info("SVR affinity prediction completed for %s molecules", len(svr_scores))
+        svr_elapsed = time.perf_counter() - svr_started
+        svr_rate = len(svr_scores) * 60.0 / svr_elapsed if svr_elapsed > 0 else 0.0
+        logger.info(
+            "SVR affinity prediction completed molecules=%s wall_seconds=%.3f molecules_per_minute=%.4f",
+            len(svr_scores), svr_elapsed, svr_rate,
+        )
 
     completed_scores_with_id = [
         (molecule_id, float(item.get("vina_score")))
@@ -401,6 +414,32 @@ def run_pipeline(
     boltz_checkpoint = load_checkpoint(run_paths.checkpoints, "boltz")
     boltz_by_id = boltz_checkpoint.get("by_molecule", {}) if boltz_checkpoint else {}
 
+    if run_boltz and boltz_selected_ids:
+        pending_boltz = [
+            (row["molecule_id"], row["smiles"])
+            for row in prepared_rows
+            if row["molecule_id"] in boltz_selected_ids
+            and row.get("ligand_prep_status") == "completed"
+            and not (
+                row["molecule_id"] in boltz_by_id
+                and boltz_by_id[row["molecule_id"]].get("boltz_status") == "completed"
+            )
+        ]
+        if pending_boltz:
+            parallel_results = run_boltz_parallel(
+                repo_root=Path(__file__).resolve().parents[2],
+                molecules=pending_boltz,
+                logs_dir=run_paths.logs,
+                boltz_results_dir=run_paths.boltz_results,
+                template_path=boltz_template_path,
+                gpu_ids=boltz_gpu_ids or [0],
+                boltz_conda_env=boltz_conda_env,
+                boltz_python_executable=boltz_python_executable,
+                min_gpu_memory_mb=boltz_min_gpu_memory_mb,
+            )
+            boltz_by_id.update(parallel_results)
+            save_checkpoint(run_paths.checkpoints, "boltz", {"by_molecule": boltz_by_id})
+
     for row in prepared_rows:
         molecule_id = row["molecule_id"]
         input_smiles = row["smiles"]
@@ -446,6 +485,11 @@ def run_pipeline(
             }
         elif molecule_id in boltz_by_id and not (run_boltz and boltz_by_id[molecule_id].get("boltz_status") == "skipped"):
             boltz_result = boltz_by_id[molecule_id]
+        elif run_boltz and boltz_gpu_ids:
+            boltz_result = boltz_by_id.get(molecule_id, {
+                "boltz_status": "failed",
+                "error": "Parallel Boltz worker produced no result",
+            })
         else:
             boltz_result = run_boltz_with_existing_wrapper(
                 repo_root=Path(__file__).resolve().parents[2],
@@ -488,7 +532,8 @@ def _run_multitarget(
     input_csv: Path, runs_root: Path, run_id: str, targets: list[dict[str, Any]],
     run_boltz: bool, boltz_max_molecules: int | None, boltz_vina_quantile: float,
     boltz_conda_env: str | None,
-    boltz_python_executable: str | None, vina_options: dict[str, Any],
+    boltz_python_executable: str | None, boltz_gpu_ids: list[int],
+    boltz_min_gpu_memory_mb: int, vina_options: dict[str, Any],
 ) -> Path:
     """Dock every target, intersect favorable quartiles, then predict each pair."""
     if len(targets) != 2:
@@ -572,6 +617,31 @@ def _run_multitarget(
             templates[name] = template
     boltz_checkpoint = load_checkpoint(paths.checkpoints, "boltz_multi")
     boltz_by_pair = boltz_checkpoint.get("by_pair", {})
+    if run_boltz and eligible:
+        smiles_by_id = {row["molecule_id"]: row["smiles"] for row in prepared}
+        for name in names:
+            pending_pairs = [
+                (mol_id, smiles_by_id[mol_id])
+                for mol_id in ordered_intersection
+                if mol_id in eligible
+                and not (
+                    f"{name}:{mol_id}" in boltz_by_pair
+                    and boltz_by_pair[f"{name}:{mol_id}"].get("boltz_status") == "completed"
+                )
+            ]
+            parallel = run_boltz_parallel(
+                repo_root=Path(__file__).resolve().parents[2],
+                molecules=pending_pairs,
+                logs_dir=paths.logs / name,
+                boltz_results_dir=paths.boltz_results / name,
+                template_path=templates[name],
+                gpu_ids=boltz_gpu_ids,
+                boltz_conda_env=boltz_conda_env,
+                boltz_python_executable=boltz_python_executable,
+                min_gpu_memory_mb=boltz_min_gpu_memory_mb,
+            )
+            boltz_by_pair.update({f"{name}:{mol_id}": value for mol_id, value in parallel.items()})
+            save_checkpoint(paths.checkpoints, "boltz_multi", {"by_pair": boltz_by_pair})
     results = []
     for row in prepared:
         mol_id = row["molecule_id"]
@@ -590,13 +660,19 @@ def _run_multitarget(
             for name in names:
                 pair_key = f"{name}:{mol_id}"
                 if pair_key not in boltz_by_pair or (run_boltz and boltz_by_pair[pair_key].get("boltz_status") == "skipped"):
-                    boltz_by_pair[pair_key] = run_boltz_with_existing_wrapper(
-                        repo_root=Path(__file__).resolve().parents[2], molecule_id=mol_id,
-                        smiles=row["smiles"], run_boltz=run_boltz,
-                        logs_dir=paths.logs / name, boltz_results_dir=paths.boltz_results / name,
-                        template_path=templates.get(name), boltz_conda_env=boltz_conda_env,
-                        boltz_python_executable=boltz_python_executable,
-                    )
+                    if run_boltz:
+                        boltz_by_pair[pair_key] = {
+                            "boltz_status": "failed",
+                            "error": "Parallel Boltz worker produced no result",
+                        }
+                    else:
+                        boltz_by_pair[pair_key] = run_boltz_with_existing_wrapper(
+                            repo_root=Path(__file__).resolve().parents[2], molecule_id=mol_id,
+                            smiles=row["smiles"], run_boltz=run_boltz,
+                            logs_dir=paths.logs / name, boltz_results_dir=paths.boltz_results / name,
+                            template_path=templates.get(name), boltz_conda_env=boltz_conda_env,
+                            boltz_python_executable=boltz_python_executable,
+                        )
                     save_checkpoint(paths.checkpoints, "boltz_multi", {"by_pair": boltz_by_pair})
                 result.update({f"{name}_{key}": value for key, value in boltz_by_pair[pair_key].items()})
             if run_boltz and any(result.get(f"{name}_boltz_status") == "failed" for name in names):

@@ -15,6 +15,7 @@ import os
 import shlex
 import subprocess
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,7 @@ def _build_affinity_command(
         )
         parts.extend(["--svr-model", shlex.quote(svr_model)])
         parts.extend(["--svr-meta", shlex.quote(svr_meta)])
+        parts.extend(["--workers", shlex.quote(str(affinity.get("num_workers", 1)))])
     else:
         dimenet_model = _maybe_abs(
             affinity.get("dimenet_model", "checkpoints/dimenet_model.pt"),
@@ -146,6 +148,7 @@ def run_svr_affinity(
     affinity: dict[str, Any],
     output_dir: Path,
     protein_pdb: str = "",
+    num_workers: int = 1,
 ) -> dict[str, float]:
     """Run SVR affinity prediction on completed Vina poses.
 
@@ -175,8 +178,8 @@ def run_svr_affinity(
     mol2_dir = output_dir / "svr_mol2"
     mol2_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest_rows: list[dict[str, str]] = []
-    for mol_id, info in candidates.items():
+    def prepare_candidate(item: tuple[str, dict[str, Any]]) -> dict[str, str] | None:
+        mol_id, info = item
         mol2_path = str(mol2_dir / f"{mol_id}.mol2")
         try:
             _pdbqt_to_mol2(
@@ -188,13 +191,35 @@ def run_svr_affinity(
                 conda_bin=conda_bin,
             )
         except RuntimeError:
-            continue
-        manifest_rows.append({
+            return None
+        return {
             "ligand_id": mol_id,
             "ligand_mol2": mol2_path,
             "vina_pdbqt": str(os.path.abspath(info["vina_pose_pdbqt"])),
             "protein_pdb": str(os.path.abspath(protein_pdb)) if protein_pdb else "",
-        })
+        }
+
+    # Open Babel does the CPU work in child processes. Threads provide a light
+    # dynamic work queue here while the SVR model is still loaded exactly once
+    # below for batched inference.
+    ordered_ids = list(candidates)
+    prepared_by_id: dict[str, dict[str, str]] = {}
+    requested_workers = int(num_workers)
+    workers = max(1, (os.cpu_count() or 1) - 1) if requested_workers == -1 else max(1, requested_workers)
+    if workers == 1:
+        for item in candidates.items():
+            row = prepare_candidate(item)
+            if row is not None:
+                prepared_by_id[row["ligand_id"]] = row
+    else:
+        with ThreadPoolExecutor(max_workers=min(workers, len(candidates))) as pool:
+            futures = [pool.submit(prepare_candidate, item) for item in candidates.items()]
+            for future in as_completed(futures):
+                row = future.result()
+                if row is not None:
+                    prepared_by_id[row["ligand_id"]] = row
+
+    manifest_rows = [prepared_by_id[mol_id] for mol_id in ordered_ids if mol_id in prepared_by_id]
 
     if not manifest_rows:
         return {}
@@ -209,13 +234,23 @@ def run_svr_affinity(
         writer.writeheader()
         writer.writerows(manifest_rows)
 
-    cmd = _build_affinity_command(affinity, manifest_path, prediction_path)
+    command_affinity = dict(affinity)
+    command_affinity["num_workers"] = workers
+    cmd = _build_affinity_command(command_affinity, manifest_path, prediction_path)
+    subprocess_env = os.environ.copy()
+    thread_limit = str(max(1, int(affinity.get("internal_threads", 1))))
+    for variable in (
+        "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+    ):
+        subprocess_env[variable] = thread_limit
     completed = subprocess.run(
         ["bash", "-lc", cmd],
         cwd=str(affinity["project_dir"]),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=subprocess_env,
     )
     if completed.returncode != 0:
         if affinity.get("fallback_to_vina", True):
